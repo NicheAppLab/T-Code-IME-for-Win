@@ -1,0 +1,46 @@
+# Build directories
+build/
+out/
+bin/
+obj/
+
+# vcpkg
+vcpkg_installed/
+vcpkg/
+vcpkg-configuration.json
+
+# IDEs
+.vscode/
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+
+# Binary files
+*.exe
+*.dll
+*.lib
+*.pdb
+*.obj
+*.exp
+*.ilk
+*.manifest
+*.res
+*.tlog
+*.lastbuildstate
+
+# Generated files
+generated/
+proto/*.pb.h
+proto/*.pb.cc
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+engine/
