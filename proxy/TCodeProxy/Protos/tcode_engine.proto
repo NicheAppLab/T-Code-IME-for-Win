@@ -24,6 +24,7 @@ message BufferStatusResponse {
         string buffer = 2;
         repeated string candidates = 3;
         string lastCharAsKey = 4;
+        bool commandSucceed = 5;
 }
 
 message InflexLeftRequest {}

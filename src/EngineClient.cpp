@@ -83,6 +83,7 @@ BufferStatusResponse CEngineClient::Backspace() {
 
 bool CEngineClient::SendInput(uint32_t vkCode, std::wstring& outComposition) {
     BufferStatusResponse resp;
+    bool commandSucceed = true;
     
     if (vkCode >= 'A' && vkCode <= 'Z') {
         char c = (char)vkCode;
@@ -101,6 +102,12 @@ bool CEngineClient::SendInput(uint32_t vkCode, std::wstring& outComposition) {
         outComposition = L"";
         return true;
     } else {
+        return false;
+    }
+
+    commandSucceed = resp.command_succeed();
+    if (!commandSucceed) {
+        outComposition.clear();
         return false;
     }
 

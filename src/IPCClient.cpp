@@ -49,13 +49,10 @@ bool IPCClient::SendInput(uint32_t vkCode, std::wstring& outCommitted, std::wstr
         return false;
     }
 
-    if (res.success == 1) {
-        if (isActive) *isActive = (res.isActive == 1);
-        outCommitted = res.committed;
-        outComposition = res.composition;
-        return true;
-    }
-    return false;
+    if (isActive) *isActive = (res.isActive == 1);
+    outCommitted = res.committed;
+    outComposition = res.composition;
+    return res.success == 1;
 }
 
 bool IPCClient::Reset() {

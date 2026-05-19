@@ -195,13 +195,17 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
     
     std::wstring committed, composition;
     bool isActive = false;
-    if (_pIPCClient->SendInput((uint32_t)wParam, committed, composition, &isActive)) {
-        // If it's a control key but the engine isn't "active" and nothing was committed, we should NOT have eaten it.
+    bool inputConsumed = _pIPCClient->SendInput((uint32_t)wParam, committed, composition, &isActive);
+
+    if (!inputConsumed) {
+        // If the engine isn't active and nothing was committed, don't eat the key.
         if (committed.empty() && !isActive && (wParam == VK_SPACE || wParam == VK_BACK || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN)) {
             *pfEaten = FALSE;
             return S_OK;
         }
+    }
 
+    if (inputConsumed || !committed.empty() || isActive) {
         *pfEaten = TRUE;
         CManageCompositionEditSession* pEditSession = new CManageCompositionEditSession(this, pic, committed, composition);
         HRESULT hr;

@@ -261,13 +261,14 @@ class Program
 
                     // Advanced Control Logic (Parity with Android TCodeProcessor.kt)
                     Console.WriteLine($"[Proxy]: Executing command for vkey {vkey}...");
-                    var timeout = DateTime.UtcNow.AddSeconds(2);
+                    // Increase deadline while debugging to avoid transient timeouts
+                    var timeout = DateTime.UtcNow.AddSeconds(5);
                     
                     try {
                         if (vkey == 8) // VK_BACK
                         {
                             resp = await _grpcClient!.BackspaceAsync(new BackspaceRequest(), deadline: timeout);
-                            success = true;
+                            success = resp?.CommandSucceed ?? false;
                         }
                         else if (vkey == 32) // VK_SPACE
                         {
@@ -286,14 +287,14 @@ class Program
                                 resp = await _grpcClient!.ConvertAsync(new ConvertRequest(), deadline: timeout);
                                 var commitResp = await _grpcClient!.CommitAsync(new CommitRequest(), deadline: timeout);
                                 committed = commitResp.Output;
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                             else if (respBuffer.Contains('▲'))
                             {
                                 // mazegaki and kanji composition mode
                                 // consume kanji composition only
                                 resp = await _grpcClient!.ConvertAsync(new ConvertRequest(), deadline: timeout);
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                             else
                             {
@@ -303,7 +304,7 @@ class Program
                                 {
                                     _selectedCandidateIndex = (resp.Candidates.Count == 1) ? 0 : -1;
                                 }
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                         }
                         else if (vkey == 37 || vkey == 39) // VK_LEFT, VK_RIGHT
@@ -318,7 +319,7 @@ class Program
                             {
                                 if (vkey == 39) resp = await _grpcClient!.RightAsync(new InflexRightRequest(), deadline: timeout);
                                 else resp = await _grpcClient!.LeftAsync(new InflexLeftRequest(), deadline: timeout);
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                         }
                         else if (vkey == 13) // VK_RETURN
@@ -330,7 +331,7 @@ class Program
                                 var commitResp = await _grpcClient!.CommitAsync(new CommitRequest(), deadline: timeout);
                                 committed = commitResp.Output;
                                 _selectedCandidateIndex = -1;
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                             else if (!string.IsNullOrEmpty(respBuffer))
                             {
@@ -357,7 +358,7 @@ class Program
                                 resp = await _grpcClient!.PutAsync(new PutRequest { Char = c.ToString() }, deadline: timeout);
                                 committed = resp.OutputBuffer;
                                 _selectedCandidateIndex = -1;
-                                success = true;
+                                success = resp?.CommandSucceed ?? true;
                             }
                         }
                         else if (type == 2) // Reset
@@ -366,28 +367,32 @@ class Program
                             success = true;
                         }
                     } catch (Exception ex) {
-                        Console.WriteLine($"[Proxy-Engine]: Engine Call Failed: {ex.Message}");
+                        Console.WriteLine($"[Proxy-Engine]: Engine Call Failed: {ex}");
+                    }
+
+                    bool gotResponse = resp != null;
+                    if (gotResponse)
+                    {
+                        respBuffer = resp.Buffer ?? "";
+                        respCandidates = resp.Candidates?.ToList() ?? new List<string>();
+                    }
+
+                    string lastKeyChar = resp?.LastCharAsKey ?? "";
+                    if (lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
+                    else if (lastKeyChar == "None") lastKeyChar = "";
+
+                    composition = respBuffer + (string.IsNullOrEmpty(lastKeyChar) ? "" : $"({lastKeyChar})");
+
+                    if (respCandidates.Count > 0)
+                    {
+                        composition += " [" + string.Join(" ", respCandidates.Select((c, i) => i == _selectedCandidateIndex ? $"[{i + 1}:{c}]" : $"{i + 1}:{c}")) + "]";
                     }
 
                     if (success)
                     {
                         Console.WriteLine("[Proxy]: Engine call successful. Updating state...");
-                        // Always sync state if we got a fresh response
-                        if (resp != null) {
-                            respBuffer = resp.Buffer ?? "";
-                            respCandidates = resp.Candidates?.ToList() ?? new List<string>();
-                        }
-                        
-                        string lastKeyChar = resp?.LastCharAsKey ?? "";
-                        if (lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
-                        else if (lastKeyChar == "None") lastKeyChar = "";
-
-                        composition = respBuffer + (string.IsNullOrEmpty(lastKeyChar) ? "" : $"({lastKeyChar})");
-
-                        if (respCandidates.Count > 0)
-                        {
-                            composition += " [" + string.Join(" ", respCandidates.Select((c, i) => i == _selectedCandidateIndex ? $"[{i + 1}:{c}]" : $"{i + 1}:{c}")) + "]";
-                        }
+                        // Diagnostic: print the raw engine response for troubleshooting conversion
+                        Console.WriteLine($"[Proxy-EngineResp]: Buffer='{resp?.Buffer ?? ""}', Candidates={resp?.Candidates?.Count ?? 0}, CommandSucceed={resp?.CommandSucceed}");
 
                         // If we just committed text, reset the engine for the next sequence
                         if (!string.IsNullOrEmpty(committed))
@@ -398,16 +403,27 @@ class Program
                             respBuffer = "";
                             respCandidates.Clear();
                         }
-
-                        // Update Status Window with Candidates
-                        string statusText = composition;
-                        if (respCandidates.Count > 0)
-                        {
-                            statusText += "\n" + string.Join(" ", respCandidates.Select((c, i) => i == _selectedCandidateIndex ? $"[{c}]" : c));
-                        }
-                        // Update status window only if enabled
-                        _statusWindow?.UpdateStatus(statusText);
                     }
+                    else
+                    {
+                        Console.WriteLine("[Proxy]: Engine call did NOT succeed. Logging response details...");
+                        if (resp == null)
+                        {
+                            Console.WriteLine("[Proxy-EngineResp-Fail]: resp==null");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[Proxy-EngineResp-Fail]: Buffer='{resp.Buffer}', Candidates={resp.Candidates?.Count ?? 0}, CommandSucceed={resp.CommandSucceed}");
+                        }
+                    }
+
+                    // Update Status Window with Candidates whenever we have fresh engine state
+                    string statusText = composition;
+                    if (respCandidates.Count > 0)
+                    {
+                        statusText += "\n" + string.Join(" ", respCandidates.Select((c, i) => i == _selectedCandidateIndex ? $"[{c}]" : c));
+                    }
+                    _statusWindow?.UpdateStatus(statusText);
 
                     Console.WriteLine("[Proxy]: Sending response back to pipe...");
                     // Prepare the 1032-byte response buffer
