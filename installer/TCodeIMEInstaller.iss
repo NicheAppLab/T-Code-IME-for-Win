@@ -20,9 +20,21 @@ PrivilegesRequired=admin
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+#ifndef Config
+#define Config "Release"
+#endif
+
+#ifndef TCodeIMEDllPath
+#define TCodeIMEDllPath SourcePath + "\build\" + Config + "\TCodeIME.dll"
+#endif
+
+#ifndef TCodeProxyBinDir
+#define TCodeProxyBinDir SourcePath + "\proxy\TCodeProxy\bin\" + Config + "\net10.0-windows"
+#endif
+
 [Files]
-Source: "{#SourcePath}\build\Release\TCodeIME.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\proxy\TCodeProxy\bin\Release\net10.0-windows\*"; DestDir: "{app}\proxy"; Flags: recursesubdirs createallsubdirs
+Source: "{#TCodeIMEDllPath}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TCodeProxyBinDir}\*"; DestDir: "{app}\proxy"; Flags: recursesubdirs createallsubdirs
 Source: "{#SourcePath}\engine\*"; DestDir: "{app}\engine"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
@@ -147,6 +159,7 @@ function InitializeSetup(): Boolean;
 var
   JavaHome: String;
   Response: Integer;
+  ResultCode: Integer;
 begin
   if IsJavaOnPath() then
   begin
@@ -190,9 +203,40 @@ begin
     exit;
   end;
 
-  MsgBox('Java Runtime Environment is required for the T-Code engine.'#13#10#13#10 +
-         'Please install a compatible JRE before running this installer.'#13#10#13#10 +
-         'Recommended NuGet command:'#13#10 +
-         '  nuget install Microsoft.Java.OpenJDK.17 -OutputDirectory .\jre', mbError, MB_OK);
+  Response := MsgBox('Java Runtime Environment (JRE) is required for the T-Code engine.'#13#10#13#10 +
+                     'Would you like the installer to automatically download and install JRE using winget?'#13#10 +
+                     '(Requires internet connection. Click ''No'' to manually install from the web, or ''Cancel'' to exit.)',
+                     mbConfirmation, MB_YESNOCANCEL);
+
+  if Response = IDYES then
+  begin
+    MsgBox('A command window will now open to run winget. Please accept any prompt and wait for the installation to finish.', mbInformation, MB_OK);
+    if Exec('cmd.exe', '/c winget install Oracle.JDK.21 --accept-source-agreements --accept-package-agreements', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    begin
+      MsgBox('Java JRE has been successfully installed via winget!'#13#10#13#10 +
+             'Please restart this installer so it can detect the new Java environment, configure JAVA_HOME, and add Java to your PATH.', mbInformation, MB_OK);
+    end
+    else
+    begin
+      MsgBox('winget installation failed or was cancelled (Exit code: ' + IntToStr(ResultCode) + ').'#13#10#13#10 +
+             'We will now open the Oracle JRE download page for manual installation.', mbError, MB_OK);
+      ShellExec('open', 'https://www.oracle.com/java/technologies/downloads/', '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+    end;
+    Result := False;
+    exit;
+  end
+  else if Response = IDNO then
+  begin
+    Response := MsgBox('Would you like to open the Oracle JRE download page to install it manually?'#13#10#13#10 +
+                       'IMPORTANT: After manual installation, make sure to set the JAVA_HOME environment variable and add %JAVA_HOME%\bin to your system PATH so that the T-Code engine can run.',
+                       mbConfirmation, MB_YESNO);
+    if Response = IDYES then
+    begin
+      ShellExec('open', 'https://www.oracle.com/java/technologies/downloads/', '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+    end;
+    Result := False;
+    exit;
+  end;
+
   Result := False;
 end;

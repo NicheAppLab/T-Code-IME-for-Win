@@ -1,0 +1,36 @@
+@startuml
+[TCode IME for Windows] -r- "Named Pipe"
+"Named Pipe" -r- [TCode Proxy]
+[TCode Proxy] -r- "gRPC"
+
+
+package "io.github.nicheapplab.tcodeserver" {
+  [TCode Server]
+  package "io.github.nicheapplab.tcodeengine" {
+    [TCode Engine]
+    database "SQLite"
+  }
+}
+"gRPC" -r- [TCode Server]
+[TCode Engine] - "SQLite"
+[TCode Server] -d- [TCode Engine]
+
+package "com.nicheapplab.t_codeime" {
+  [TCode IME for Android]
+}
+
+[TCode Engine] -d- [TCode IME for Android]
+
+note top of [TCode IME for Windows]: C++
+note top of [TCode Proxy]: C#
+note top of [TCode Server]: Scala
+note bottom of [TCode Engine]: Scala
+note bottom of [TCode IME for Android]: Kotlin
+
+package "Text Services Framework"
+[TCode IME for Windows] -d- "Text Services Framework"
+
+package "gRPC lib"
+[TCode Proxy] -d- "gRPC lib"
+
+@enduml

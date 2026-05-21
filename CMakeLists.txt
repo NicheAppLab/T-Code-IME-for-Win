@@ -70,26 +70,46 @@ target_compile_definitions(TCodeIME PRIVATE UNICODE _UNICODE)
 set_target_properties(TCodeIME PROPERTIES PREFIX "")
 
 # -----------------------------------------------------------------------------
-# TCodeProxy (Moved to C# / proxy/TCodeProxy)
+# TCodeProxy (C# Project)
 # -----------------------------------------------------------------------------
-# set(PROXY_SRC_FILES
-#     src/ProxyMain.cpp
-#     src/PipeServer.cpp
-#     src/ProcessManager.cpp
-#     src/EngineClient.cpp
-# )
+find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
 
-# add_executable(TCodeProxy ${PROXY_SRC_FILES} ${PROTO_SRCS})
+add_custom_target(TCodeProxy ALL
+    COMMAND ${DOTNET_EXECUTABLE} build "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj" --configuration $<CONFIG>
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy"
+    COMMENT "Building C# TCodeProxy with dotnet build ($<CONFIG>)"
+)
 
-# target_include_directories(TCodeProxy PRIVATE 
-#     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-#     "${PROTO_GEN_DIR}"
-# )
+# -----------------------------------------------------------------------------
+# TCodeInstaller (Inno Setup Installer)
+# -----------------------------------------------------------------------------
+option(BUILD_INSTALLER "Build the Inno Setup installer package" ON)
 
-# target_link_libraries(TCodeProxy PRIVATE
-#     gRPC::grpc++
-#     protobuf::libprotobuf
-#     advapi32
-# )
+if(BUILD_INSTALLER)
+    find_program(ISCC_EXECUTABLE ISCC
+        PATHS
+            "C:/Program Files (x86)/Inno Setup 6"
+            "C:/Program Files (x86)/Inno Setup 7"
+            "C:/Program Files/Inno Setup 6"
+            "C:/Program Files/Inno Setup 7"
+            "$ENV{LOCALAPPDATA}/Programs/Inno Setup 6"
+            "$ENV{LOCALAPPDATA}/Programs/Inno Setup 7"
+        DOC "Inno Setup Compiler (ISCC.exe)"
+    )
 
-# target_compile_definitions(TCodeProxy PRIVATE UNICODE _UNICODE)
+    if(NOT ISCC_EXECUTABLE)
+        message(WARNING "ISCC.exe (Inno Setup) not found. The 'TCodeInstaller' target will not be available.")
+    else()
+        add_custom_target(TCodeInstaller
+            COMMAND ${ISCC_EXECUTABLE}
+                "/DConfig=$<CONFIG>"
+                "/DTCodeIMEDllPath=$<TARGET_FILE:TCodeIME>"
+                "/DTCodeProxyBinDir=${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/bin/$<CONFIG>/net10.0-windows"
+                "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/installer"
+            DEPENDS TCodeIME TCodeProxy
+            COMMENT "Building Inno Setup installer package ($<CONFIG>)"
+        )
+    endif()
+endif()
+
