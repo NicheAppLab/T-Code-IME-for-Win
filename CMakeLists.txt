@@ -48,6 +48,7 @@ set(IME_SRC_FILES
     src/ClassFactory.cpp
     src/TCodeIME.cpp
     src/IPCClient.cpp  # New Named Pipe Client
+    src/Resources.rc
     src/TCodeIME.def
 )
 

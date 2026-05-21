@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.Pipes;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using Grpc.Net.Client;
@@ -15,6 +16,7 @@ class Program
     private static TCodeService.TCodeServiceClient? _grpcClient;
     private static Process? _javaProcess;
     private static StatusWindow? _statusWindow;
+    private static TrayApplicationContext? _trayContext;
     private static int _selectedCandidateIndex = -1;
 
     public class StatusWindow : Form
@@ -96,6 +98,61 @@ class Program
         public const int HT_CAPTION = 0x2;
     }
 
+    public class TrayApplicationContext : ApplicationContext
+    {
+        private readonly NotifyIcon _notifyIcon;
+
+        public TrayApplicationContext()
+        {
+            _notifyIcon = new NotifyIcon
+            {
+                Icon = LoadTrayIcon(),
+                Text = "T-Code IME Proxy",
+                Visible = true
+            };
+
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Show Status", null, (_, _) => ShowStatus());
+            menu.Items.Add("Exit", null, (_, _) => ExitThread());
+            _notifyIcon.ContextMenuStrip = menu;
+            _notifyIcon.DoubleClick += (_, _) => ShowStatus();
+            _notifyIcon.ShowBalloonTip(2500, "T-Code IME Proxy", "T-Code IME is running in the tray.", ToolTipIcon.Info);
+        }
+
+        private static Icon LoadTrayIcon()
+        {
+            var iconsDirPath = Path.Combine(AppContext.BaseDirectory, "icons");
+            var iconPath = Path.Combine(iconsDirPath, "icon.ico");
+            if (!File.Exists(iconPath))
+            {
+                // Fallback to root output if the icons subfolder wasn't created
+                iconPath = Path.Combine(AppContext.BaseDirectory, "icon.ico");
+            }
+
+            if (!File.Exists(iconPath))
+            {
+                return SystemIcons.Application;
+            }
+
+            return new Icon(iconPath, 16, 16);
+        }
+
+        private void ShowStatus()
+        {
+            MessageBox.Show("T-Code IME proxy is running in the tray.", "T-Code IME Proxy", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+
     #region Job Object P/Invoke
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
@@ -155,6 +212,20 @@ class Program
         Console.WriteLine("Build Date: 2026-05-16");
         Console.WriteLine("===========================================");
 
+        var trayThreadStarted = new ManualResetEventSlim(false);
+        var trayThread = new Thread(() =>
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            _trayContext = new TrayApplicationContext();
+            trayThreadStarted.Set();
+            Application.Run(_trayContext);
+        });
+        trayThread.SetApartmentState(ApartmentState.STA);
+        trayThread.IsBackground = true;
+        trayThread.Start();
+        trayThreadStarted.Wait();
+
         // UI thread for Status Window disabled to avoid deadlocks
 // var uiThread = new Thread(() => {
 //     try {
@@ -184,8 +255,15 @@ class Program
         // Force HTTP/2 without TLS (Prior Knowledge)
         AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
 
+        // Determine gRPC server port (env `TCODE_SERVER_PORT` overrides default)
+        var grpcPortEnv = Environment.GetEnvironmentVariable("TCODE_SERVER_PORT");
+        var grpcPort = 57001;
+        if (!string.IsNullOrEmpty(grpcPortEnv) && int.TryParse(grpcPortEnv, out var parsedPort)) grpcPort = parsedPort;
+        var grpcAddress = $"http://localhost:{grpcPort}";
+        Console.WriteLine($"Using gRPC address: {grpcAddress}");
+
         // 1. Setup gRPC with H2C support (unencrypted HTTP/2)
-        var channel = GrpcChannel.ForAddress("http://localhost:8080", new GrpcChannelOptions
+        var channel = GrpcChannel.ForAddress(grpcAddress, new GrpcChannelOptions
         {
             HttpHandler = new SocketsHttpHandler
             {
@@ -495,13 +573,22 @@ class Program
         }
 
         Console.WriteLine($"Starting Engine via Script: {scriptPath}");
+
+        // Allow overriding port and dict-dir via environment. Defaults provided by the server update.
+        var serverPortEnv = Environment.GetEnvironmentVariable("TCODE_SERVER_PORT") ?? "57001";
+        var serverPort = serverPortEnv;
+        var dictDirEnv = Environment.GetEnvironmentVariable("TCODE_DICT_DIR") ?? "%APPDATA%\\tcode-server\\dictionary";
+        var dictDirResolved = Environment.ExpandEnvironmentVariables(dictDirEnv);
+
+        Console.WriteLine($"Engine config: port={serverPort}, dict-dir={dictDirResolved}");
+
         _javaProcess = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                // Pass -Duser.home to fix the 'null' path issue in the engine
-                Arguments = $"/c \"set JAVA_OPTS=-Duser.home=\"{engineDir}\" && \"{scriptPath}\"\"",
+                // Pass system properties to the JVM via JAVA_OPTS so the server picks them up
+                Arguments = $"/c \"set JAVA_OPTS=-Duser.home=\"{engineDir}\" -Dtcode-server.server.port={serverPort} -Dtcode-server.dict-dir=\"{dictDirResolved}\" && \"{scriptPath}\"\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

@@ -3,8 +3,7 @@
 #include <msctf.h>
 #include "IPCClient.h"
 
-class CTCodeIME : public ITfTextInputProcessor,
-                  public ITfTextInputProcessorEx,
+class CTCodeIME : public ITfTextInputProcessorEx,
                   public ITfKeyEventSink,
                   public ITfCompositionSink
 {
