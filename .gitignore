@@ -3,6 +3,7 @@ build/
 out/
 bin/
 obj/
+packaging/output/
 
 # vcpkg
 vcpkg_installed/
@@ -44,3 +45,6 @@ Thumbs.db
 Desktop.ini
 
 engine/
+
+# Ou
+packaging/output/TCodeIME_cert.pfx
