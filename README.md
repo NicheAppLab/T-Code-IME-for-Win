@@ -36,25 +36,44 @@ This compiles and outputs:
 - `TCodeIME.dll` (native TSF library) in `build/Release/`
 - `TCodeProxy.exe` (C# Host) in `proxy/TCodeProxy/bin/Release/net10.0-windows/`
 
-### 3. Generate the Setup Installer
-To compile the Inno Setup script and package the native DLL, the C# Proxy, and the Java engine into a single redistributable setup installer, run:
+### 3. Generate the Package or Installer
+
+You can choose between the modern **MSIX Package** (recommended, powered by `winapp` CLI) or the traditional **Win32 Setup Installer** (powered by Inno Setup):
+
+#### Option A: Build the Signed MSIX Package (Recommended)
+To package and sign the application as a modern Windows `.msix` bundle:
+```powershell
+cmake --build build --config Release --target TCodeMSIX
+```
+This automatically stages the application components, generates the AppX manifest, creates visual assets from the logo, and signs it using a generated certificate, outputting:
+- `TCodeIME.msix` inside `packaging/output/`
+
+#### Option B: Build the Traditional Setup Installer
+To compile the legacy Inno Setup installer package:
 ```powershell
 cmake --build build --config Release --target TCodeInstaller
 ```
-This automatically invokes the Inno Setup compiler (`ISCC.exe`) and outputs:
-- `TCodeIMEInstaller.exe` inside `installer/output/`
+This outputs `TCodeIMEInstaller.exe` inside `installer/output/`.
 
 ---
 
 ## How to Install & Configure
 
-1. Locate and run `installer/output/TCodeIMEInstaller.exe` (requires Administrator privileges).
-2. **Java Runtime Setup**:
-   - **Auto-Detection**: If a JRE is already installed, the installer automatically detects it and prompts you to register `JAVA_HOME` and update your system `PATH`.
-   - **Auto-Install via winget**: If JRE is missing, the installer will offer to automatically install JRE using `winget`. Relaunch the installer after it completes.
-   - **Manual Download**: If `winget` is skipped or fails, the installer will offer to open Oracle's official downloads site. *Note: If manually installed, you must define the `JAVA_HOME` environment variable and append `%JAVA_HOME%\bin` to your system `PATH`.*
-3. Complete the setup wizard.
-4. Add the keyboard in Windows: Go to **Settings > Time & Language > Language & Region > Preferred Languages > Options**, and add the **T-Code IME** keyboard.
+### Installing via MSIX (Option A)
+1. Navigate to `packaging/output/` and double-click `TCodeIME.msix` to open the Windows App Installer.
+2. Sideload the package directly. Windows will automatically configure the modern background Startup Task to launch the `TCodeProxy.exe`.
+3. To manually install via PowerShell:
+   ```powershell
+   Add-AppxPackage -Path .\packaging\output\TCodeIME.msix
+   ```
+
+### Installing via Win32 Setup (Option B)
+1. Run `installer/output/TCodeIMEInstaller.exe` (requires Administrator privileges).
+2. Follow the wizard steps to complete registration.
+
+### Language & JRE Setup
+1. **Java Runtime Setup**: Ensure a JRE is installed and `JAVA_HOME` is defined in your environment path, as it is required by the T-Code translation engine.
+2. **Add Keyboard**: Go to **Settings > Time & Language > Language & Region > Preferred Languages > Options**, and add the **T-Code IME** keyboard.
 
 ---
 
@@ -73,5 +92,6 @@ Here is the system architecture diagram showing how the native Windows TSF DLL, 
 - `src/` — Native C++ Text Services Framework (TSF) implementation.
 - `proxy/` — C# Proxy UI Host (coordinates named pipe communication between the DLL and the engine).
 - `engine/` — T-Code Java engine runtime.
-- `installer/` — Inno Setup packaging configurations and output files.
+- `installer/` — Inno Setup packaging configurations and legacy output files.
+- `packaging/` — Modern Winapp CLI packaging configuration, scripts, manifests, and output MSIX files.
 - `CMakeLists.txt` — Unified root CMake configuration orchestrating the entire build.

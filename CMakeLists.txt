@@ -113,3 +113,24 @@ if(BUILD_INSTALLER)
     endif()
 endif()
 
+# -----------------------------------------------------------------------------
+# TCodeMSIX (Winapp CLI MSIX Package)
+# -----------------------------------------------------------------------------
+option(BUILD_MSIX "Build the modern MSIX package using winapp CLI" ON)
+
+if(BUILD_MSIX)
+    find_program(POWERSHELL_EXECUTABLE powershell)
+    if(NOT POWERSHELL_EXECUTABLE)
+        message(WARNING "powershell.exe not found. The 'TCodeMSIX' target will not be available.")
+    else()
+        add_custom_target(TCodeMSIX
+            COMMAND ${POWERSHELL_EXECUTABLE}
+                -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/packaging/build_package.ps1"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+            DEPENDS TCodeIME TCodeProxy
+            COMMENT "Building signed MSIX package using winapp CLI ($<CONFIG>)"
+        )
+    endif()
+endif()
+
