@@ -103,7 +103,7 @@ private:
 };
 
 CTCodeIME::CTCodeIME() 
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr) 
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE)
 {
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
@@ -174,6 +174,31 @@ STDMETHODIMP CTCodeIME::OnCompositionTerminated(TfEditCookie ecWrite, ITfComposi
 }
 
 STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) {
+    bool isCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool isAlt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+    bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
+    bool isCtrlSlash = isCtrl && !isAlt && !isWin && (wParam == VK_OEM_2);
+
+    if (_fDirectInputMode) {
+        if (isCtrlSlash) {
+            *pfEaten = TRUE;
+            return S_OK;
+        }
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
+    if (isCtrlSlash) {
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    // Do not capture other Windows shortcuts with modifier keys (Ctrl/Alt/Win)
+    if (isCtrl || isAlt || isWin) {
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
     // Intercept Numbers (0x30-0x39), A-Z (0x41-0x5A), and Punctuation (0xBA-0xDF)
     if ((wParam >= 0x30 && wParam <= 0x39) || 
         (wParam >= 0x41 && wParam <= 0x5A) || 
@@ -189,8 +214,40 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
 }
 
 STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) {
+    bool isCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool isAlt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+    bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
+    bool isCtrlSlash = isCtrl && !isAlt && !isWin && (wParam == VK_OEM_2);
+
+    if (isCtrlSlash) {
+        _fDirectInputMode = !_fDirectInputMode;
+        if (_fDirectInputMode) {
+            // Cancel composition when switching to direct input mode
+            if (_pComposition) {
+                CManageCompositionEditSession* pEditSession = new CManageCompositionEditSession(this, pic, L"", L"");
+                HRESULT hr;
+                pic->RequestEditSession(_tfClientId, pEditSession, TF_ES_READWRITE | TF_ES_SYNC, &hr);
+                pEditSession->Release();
+            }
+            _pIPCClient->Reset();
+        }
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    if (_fDirectInputMode) {
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
     if (wParam == VK_SHIFT || wParam == VK_CONTROL || wParam == VK_MENU || wParam == VK_LWIN || wParam == VK_RWIN) {
         *pfEaten = FALSE; return S_OK;
+    }
+
+    // Do not capture other Windows shortcuts with modifier keys (Ctrl/Alt/Win)
+    if (isCtrl || isAlt || isWin) {
+        *pfEaten = FALSE;
+        return S_OK;
     }
     
     std::wstring committed, composition;

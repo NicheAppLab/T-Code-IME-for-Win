@@ -41,6 +41,7 @@ private:
     
     tcode::IPCClient* _pIPCClient;
     ITfComposition* _pComposition;
+    BOOL _fDirectInputMode;
 
     friend class CManageCompositionEditSession;
 };
