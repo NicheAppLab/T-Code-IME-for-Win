@@ -1,116 +1,66 @@
-# T-Code IME MSIX Packager Script
-# This script compiles, stages, manifests, and packages the T-Code IME using winapp CLI.
+Param(
+    [Parameter(Mandatory=$true)]
+    [string]$Version,
+    [string]$PackageName = "NicheAppLab.T-CodeIME",
+    [string]$PublisherGuid = "2BF2953C-66FF-4938-ACE4-42FB3950D28C",
+    [string]$DisplayName = "T-Code IME",
+    [string]$PublisherDisplayName = "Niche App Lab",
+    [Parameter(Mandatory=$false)]
+    [string]$Publisher = "Niche App Lab"
+)
 
-$ErrorActionPreference = "Stop"
-
-# 1. Paths configuration
-$root = Resolve-Path ".."
-$packagingDir = Join-Path $root "packaging"
-$layoutDir = Join-Path $packagingDir "layout"
-$outputDir = Join-Path $packagingDir "output"
-
-Write-Host "=== T-Code IME MSIX Packager ===" -ForegroundColor Cyan
-
-# Ensure clean layout and output folders
-if (Test-Path $layoutDir) {
-    Remove-Item $layoutDir -Recurse -Force
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+# Ensure version has four components as required by appx manifest (e.g., 0.1.0.0)
+function Convert-ToFourPartVersion([string]$v) {
+    $parts = $v.Split('.')
+    while ($parts.Count -lt 4) {
+        $parts += '0'
+    }
+    if ($parts.Count -gt 4) { $parts = $parts[0..3] }
+    return $parts -join '.'
 }
-New-Item -ItemType Directory -Path $layoutDir -Force | Out-Null
-New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+$manifestVersion = Convert-ToFourPartVersion $Version
 
-# 2. Stage Binaries
-Write-Host "Staging compiled binaries..." -ForegroundColor Green
+$manifestPath = Join-Path $PSScriptRoot "layout\Package.appxmanifest"
+[xml]$xml = Get-Content $manifestPath
 
-# Stage Native DLL at layout root
-$dllSource = Join-Path $root "build\Release\TCodeIME.dll"
-if (-not (Test-Path $dllSource)) {
-    throw "TCodeIME.dll not found. Please build the Release configuration first."
+# Locate the Identity element inside the Package element
+$identity = $xml.Package.Identity
+if (-not $identity) {
+    Write-Error "Identity element not found in manifest."
+    exit 1
 }
-Copy-Item $dllSource -Destination $layoutDir -Force
+    # Set Identity attributes
+    $identity.SetAttribute('Name', $PackageName)
+    $identity.SetAttribute('Publisher', "CN=$PublisherGuid")
+    $identity.SetAttribute('Version', $manifestVersion)
+    # Update display names
+    if ($xml.Package.Properties) {
+        $xml.Package.Properties.DisplayName = $DisplayName
+        $xml.Package.Properties.PublisherDisplayName = $PublisherDisplayName
+    } else {
+        # Fallback: add Properties element if missing
+        $props = $xml.CreateElement('Properties')
+        $display = $xml.CreateElement('DisplayName')
+        $display.InnerText = $DisplayName
+        $props.AppendChild($display) | Out-Null
+        $pubDisp = $xml.CreateElement('PublisherDisplayName')
+        $pubDisp.InnerText = $DisplayName
+        $props.AppendChild($pubDisp) | Out-Null
+        $xml.Package.AppendChild($props) | Out-Null
+    }
 
-# Stage C# Proxy under layout/proxy
-$proxyLayout = New-Item -ItemType Directory -Path (Join-Path $layoutDir "proxy") -Force
-$proxySource = Join-Path $root "proxy\TCodeProxy\bin\Release\net10.0-windows"
-if (-not (Test-Path (Join-Path $proxySource "TCodeProxy.exe"))) {
-    throw "TCodeProxy.exe not found. Please build the Release configuration first."
-}
-Copy-Item (Join-Path $proxySource "\*") -Destination $proxyLayout -Recurse -Force
+# Save the modified manifest back
+$xml.Save($manifestPath)
 
-# Stage Java T-Code Engine under layout/engine
-$engineLayout = New-Item -ItemType Directory -Path (Join-Path $layoutDir "engine") -Force
-$engineSource = Join-Path $root "engine"
-Copy-Item (Join-Path $engineSource "\*") -Destination $engineLayout -Recurse -Force
-
-# Stage Icons under layout/icons
-$iconsLayout = New-Item -ItemType Directory -Path (Join-Path $layoutDir "icons") -Force
-$iconSource = Join-Path $root "icons\icon.png"
-Copy-Item $iconSource -Destination $iconsLayout -Force
-
-# 3. Generate AppX Manifest & Visual Assets using winapp CLI
-Write-Host "Generating Package.appxmanifest and visual assets using winapp CLI..." -ForegroundColor Green
-
-Push-Location $layoutDir
-# Generate base manifest inside layout folder
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-winapp manifest generate . `
-    --package-name "TCodeIME" `
-    --publisher-name "CN=TCode" `
-    --description "T-Code IME for Windows" `
-    --executable "proxy\TCodeProxy.exe" `
-    --logo-path "icons\icon.png" `
-    --if-exists overwrite
-Pop-Location
-
-# 4. Inject TSF Input Method and Packaged Startup Task into AppxManifest.xml
-Write-Host "Customizing Package.appxmanifest for startup task..." -ForegroundColor Green
-$manifestPath = Join-Path $layoutDir "Package.appxmanifest"
-[xml]$manifest = Get-Content $manifestPath
-
-# Update namespaces
-$manifest.Package.SetAttribute("xmlns:desktop", "http://schemas.microsoft.com/appx/manifest/desktop/windows10")
-$ignorable = $manifest.Package.GetAttribute("IgnorableNamespaces")
-if ($ignorable -notlike "*desktop*") {
-    $manifest.Package.SetAttribute("IgnorableNamespaces", "$ignorable desktop")
-}
-
-# Find Application node
-$appNode = $manifest.Package.Applications.Application
-$appNode.SetAttribute("Executable", "proxy\TCodeProxy.exe")
-
-# Create Extensions element if not exists
-$extsNode = $appNode.Extensions
-if ($null -eq $extsNode) {
-    $extsNode = $manifest.CreateElement("Extensions", $manifest.Package.NamespaceURI)
-    $appNode.AppendChild($extsNode) | Out-Null
-}
-
-# Create StartupTask extension element
-$startupNode = $manifest.CreateElement("desktop", "Extension", "http://schemas.microsoft.com/appx/manifest/desktop/windows10")
-$startupNode.SetAttribute("Category", "windows.startupTask")
-$startupNode.SetAttribute("Executable", "proxy\TCodeProxy.exe")
-$startupNode.SetAttribute("EntryPoint", "Windows.FullTrustApplication")
-
-# Create desktop:StartupTask element
-$taskNode = $manifest.CreateElement("desktop", "StartupTask", "http://schemas.microsoft.com/appx/manifest/desktop/windows10")
-$taskNode.SetAttribute("TaskId", "TCodeProxyStartup")
-$taskNode.SetAttribute("Enabled", "true")
-$taskNode.SetAttribute("DisplayName", "T-Code IME Proxy")
-$startupNode.AppendChild($taskNode) | Out-Null
-
-$extsNode.AppendChild($startupNode) | Out-Null
-
-# Save modified manifest
-$manifest.Save($manifestPath)
-
-# 5. Pack and Sign the MSIX package
-Write-Host "Creating and signing MSIX package..." -ForegroundColor Green
-$msixFile = Join-Path $outputDir "TCodeIME.msix"
-
-winapp package $layoutDir `
-    --output $msixFile `
-    --generate-cert `
-    --publisher "CN=TCode" `
-    --manifest $manifestPath
-
-Write-Host "Successfully packaged and signed T-Code IME MSIX package!" -ForegroundColor Green
-Write-Host "MSIX Location: $msixFile" -ForegroundColor Cyan
+Write-Host "Manifest version set to $manifestVersion"
+# Package the app into an MSIX using winapp CLI
+# The layout folder contains the compiled DLL and assets.
+# --generate-cert creates a temporary dev certificate for signing.
+# Output will be placed in the 'output' subfolder.
+$layoutPath = Join-Path $PSScriptRoot "layout"
+$outputPath = Join-Path $PSScriptRoot "output"
+# Ensure output directory exists
+if (-not (Test-Path $outputPath)) { New-Item -ItemType Directory -Path $outputPath | Out-Null }
+# Run winapp packaging
+winapp package $layoutPath --manifest $manifestPath --output (Join-Path $outputPath "TCodeIME.msix") --generate-cert -v

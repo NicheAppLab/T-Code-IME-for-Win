@@ -2,10 +2,16 @@
 
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include "tcode_engine.grpc.pb.h"
+#include <cstring>
+#include <cstdint>
 
-using namespace io::github::nicheapplab::tcodeserver;
+// Simple stub response structs to replace protobuf generated types
+struct BufferStatusResponse {
+    bool command_succeed() const { return true; }
+    std::string buffer() const { return ""; }
+    explicit operator bool() const { return command_succeed(); }
+};
+struct CommitResponse {};
 
 class CEngineClient {
 public:
@@ -13,20 +19,16 @@ public:
     ~CEngineClient();
 
     bool Connect(const std::string& address);
-    
     BufferStatusResponse Put(const std::string& char_str);
     BufferStatusResponse Left();
     BufferStatusResponse Right();
-    BufferStatusResponse Reset();
+    bool Reset();
     BufferStatusResponse Convert();
     BufferStatusResponse Select(int32_t n);
     CommitResponse Commit();
     BufferStatusResponse Backspace();
-    
     bool SendInput(uint32_t vkCode, std::wstring& outComposition);
-    
+
 private:
     std::wstring Utf8ToWide(const std::string& str);
-    std::shared_ptr<grpc::Channel> _channel;
-    std::unique_ptr<TCodeService::Stub> _stub;
 };

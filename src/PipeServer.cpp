@@ -60,7 +60,7 @@ void PipeServer::HandleClient(HANDLE hPipe) {
     DWORD bytesRead;
     
     while (ReadFile(hPipe, &req, sizeof(req), &bytesRead, NULL) && bytesRead != 0) {
-        IPCResponse res = { false, L"" };
+        IPCResponse res = { 0, 0, L"", L"" };
 
         if (req.type == CommandType::Input) {
             std::wstring comp;

@@ -206,7 +206,7 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
         *pfEaten = TRUE; return S_OK; 
     }
     
-    if (wParam == VK_SPACE || wParam == VK_BACK || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN) {
+    if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN) {
         *pfEaten = TRUE; return S_OK;
     }
     *pfEaten = FALSE;

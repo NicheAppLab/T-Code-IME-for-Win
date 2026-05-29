@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap uap2 uap3 uap10 desktop desktop6 rescap">
-  <Identity Name="TCodeIME" Publisher="CN=TCode" Version="1.0.0.0" />
+  <Identity Name="NicheAppLab.T-CodeIME" Publisher="CN=2BF2953C-66FF-4938-ACE4-42FB3950D28C" Version="0.1.0.0" />
   <Properties>
-    <DisplayName>TCodeIME</DisplayName>
-    <PublisherDisplayName>TCode</PublisherDisplayName>
+    <DisplayName>T-Code IME</DisplayName>
+    <PublisherDisplayName>Niche App Lab</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>

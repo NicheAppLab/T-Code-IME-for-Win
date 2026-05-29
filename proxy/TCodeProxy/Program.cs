@@ -121,20 +121,33 @@ class Program
 
         private static Icon LoadTrayIcon()
         {
-            var iconsDirPath = Path.Combine(AppContext.BaseDirectory, "icons");
-            var iconPath = Path.Combine(iconsDirPath, "icon.ico");
-            if (!File.Exists(iconPath))
+            // Try to locate the icon in the deployed base directory or within an "icons" subfolder.
+            // This works both when running from the project output folder and when the
+            // executable is placed elsewhere (e.g., installed location).
+            string baseDir = AppContext.BaseDirectory;
+            string[] possiblePaths = new string[]
             {
-                // Fallback to root output if the icons subfolder wasn't created
-                iconPath = Path.Combine(AppContext.BaseDirectory, "icon.ico");
-            }
-
-            if (!File.Exists(iconPath))
+                Path.Combine(baseDir, "icons", "icon.ico"), // Expected path when icons are copied
+                Path.Combine(baseDir, "icon.ico"),            // Fallback for legacy builds
+                Path.Combine(baseDir, "icons", "icon.png")   // PNG fallback (converted to Icon by system)
+            };
+            foreach (var path in possiblePaths)
             {
-                return SystemIcons.Application;
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        // If the file is a .png, .ico loads directly; otherwise, let Icon handle it.
+                        return new Icon(path, 16, 16);
+                    }
+                    catch
+                    {
+                        // Continue to next candidate if loading fails.
+                    }
+                }
             }
-
-            return new Icon(iconPath, 16, 16);
+            // Ultimate fallback to a generic system icon so the tray never appears empty.
+            return SystemIcons.Application;
         }
 
         private void ShowStatus()
@@ -544,7 +557,6 @@ class Program
     {
         if (_javaProcess != null && !_javaProcess.HasExited) return;
 
-
         // Robustly find the 'engine' directory by searching upwards
         string? currentDir = AppDomain.CurrentDomain.BaseDirectory;
         string? engineDir = null;
@@ -562,20 +574,49 @@ class Program
         if (engineDir == null)
         {
             Console.WriteLine("Error: Could not find 'engine' directory in any parent folder.");
+            // Fallback: check if a tcodeserver.bat exists directly in the current base directory
+            var fallbackScript = Path.Combine(AppContext.BaseDirectory, "tcodeserver.bat");
+            if (File.Exists(fallbackScript))
+            {
+                Console.WriteLine($"Using fallback script at {fallbackScript}");
+                await StartEngineProcess(fallbackScript, "57001");
+                return;
+            }
             return;
         }
 
         string scriptPath = Path.Combine(engineDir, "bin", "tcodeserver.bat");
         if (!File.Exists(scriptPath))
         {
-            Console.WriteLine($"Error: Could not find engine script at {scriptPath}");
-            return;
+            // Try script directly in engine directory
+            var altScript = Path.Combine(engineDir, "tcodeserver.bat");
+            if (File.Exists(altScript))
+            {
+                scriptPath = altScript;
+            }
+            else
+            {
+                // Another fallback: look for script in the base directory
+                var fallbackScript = Path.Combine(AppContext.BaseDirectory, "tcodeserver.bat");
+                if (File.Exists(fallbackScript))
+                {
+                    Console.WriteLine($"Using fallback script at {fallbackScript}");
+                    await StartEngineProcess(fallbackScript, "57001");
+                    return;
+                }
+                Console.WriteLine($"Error: Could not find engine script at {scriptPath}");
+                return;
+            }
         }
+        await StartEngineProcess(scriptPath, "57001", engineDir);
+    }
 
+    private static async Task StartEngineProcess(string scriptPath, string port, string? workingDir = null)
+    {
         Console.WriteLine($"Starting Engine via Script: {scriptPath}");
 
         // Allow overriding port and dict-dir via environment. Defaults provided by the server update.
-        var serverPortEnv = Environment.GetEnvironmentVariable("TCODE_SERVER_PORT") ?? "57001";
+        var serverPortEnv = Environment.GetEnvironmentVariable("TCODE_SERVER_PORT") ?? port;
         var serverPort = serverPortEnv;
         var dictDirEnv = Environment.GetEnvironmentVariable("TCODE_DICT_DIR") ?? "%APPDATA%\\tcode-server\\dictionary";
         var dictDirResolved = Environment.ExpandEnvironmentVariables(dictDirEnv);
@@ -588,12 +629,12 @@ class Program
             {
                 FileName = "cmd.exe",
                 // Pass system properties to the JVM via JAVA_OPTS so the server picks them up
-                Arguments = $"/c \"set JAVA_OPTS=-Duser.home=\"{engineDir}\" -Dtcode-server.server.port={serverPort} -Dtcode-server.dict-dir=\"{dictDirResolved}\" && \"{scriptPath}\"\"",
+                Arguments = $"/c \"set JAVA_OPTS=-Duser.home=\"{workingDir ?? AppContext.BaseDirectory}\" -Dtcode-server.server.port={serverPort} -Dtcode-server.dict-dir=\"{dictDirResolved}\" && \"{scriptPath}\"\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
-                WorkingDirectory = engineDir
+                WorkingDirectory = workingDir ?? AppContext.BaseDirectory
             }
         };
 

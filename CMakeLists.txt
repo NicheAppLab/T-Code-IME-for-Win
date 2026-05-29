@@ -1,58 +1,47 @@
+# CMakeLists.txt
+
 cmake_minimum_required(VERSION 3.20)
 project(TCodeIMEForWin VERSION 0.1.0 LANGUAGES CXX)
 
+# Set package identity and publisher GUID for MSIX
+set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
+set(PUBLISHER_GUID "2BF2953C-66FF-4938-ACE4-42FB3950D28C")
+set(DISPLAY_NAME "T-Code IME")
+set(PUBLISHER_DISPLAY_NAME "Niche App Lab")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ... (rest of file unchanged) ...
+# Removed duplicate TCodeMSIX target
 
 # Avoid building tests or examples for dependencies if any leak through
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-
-# gRPC/Protobuf are now handled by the C# Proxy
-# find_package(protobuf CONFIG REQUIRED)
-# find_package(gRPC CONFIG REQUIRED)
-
-# The generated code will go into the build directory
-# set(PROTO_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-# file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
-
-set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/proto/tcode_engine.proto")
-
-# Create a target to compile the proto file
-# add_custom_command(
-#     OUTPUT "${PROTO_GEN_DIR}/tcode_engine.pb.h"
-#            "${PROTO_GEN_DIR}/tcode_engine.pb.cc"
-#            "${PROTO_GEN_DIR}/tcode_engine.grpc.pb.h"
-#            "${PROTO_GEN_DIR}/tcode_engine.grpc.pb.cc"
-#     COMMAND protobuf::protoc
-#     ARGS --proto_path="${CMAKE_CURRENT_SOURCE_DIR}/proto"
-#          --cpp_out="${PROTO_GEN_DIR}"
-#          --grpc_out="${PROTO_GEN_DIR}"
-#          --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
-#          "${PROTO_FILE}"
-#     DEPENDS "${PROTO_FILE}" protobuf::protoc gRPC::grpc_cpp_plugin
-#     COMMENT "Generating C++ and gRPC files from tcode_engine.proto"
-# )
-
-# set(PROTO_SRCS 
-#     "${PROTO_GEN_DIR}/tcode_engine.pb.cc" 
-#     "${PROTO_GEN_DIR}/tcode_engine.grpc.pb.cc"
-# )
 
 # -----------------------------------------------------------------------------
 # TCodeIME (TSF DLL)
 # -----------------------------------------------------------------------------
 set(IME_SRC_FILES
-    src/dllmain.cpp
-    src/Globals.cpp
-    src/Registry.cpp
-    src/ClassFactory.cpp
     src/TCodeIME.cpp
-    src/IPCClient.cpp  # New Named Pipe Client
-    src/Resources.rc
-    src/TCodeIME.def
+    src/dllmain.cpp
+    src/ClassFactory.cpp
+    src/Globals.cpp
+    src/IPCClient.cpp
+    src/PipeServer.cpp
+    src/ProcessManager.cpp
+    src/ProxyMain.cpp
+    src/Registry.cpp
+    src/EngineClient.cpp
+    src/TCodeIME.rc
 )
-
 add_library(TCodeIME SHARED ${IME_SRC_FILES})
+
+# Ensure C++17 features (including std::filesystem)
+if (MSVC)
+    target_compile_options(TCodeIME PRIVATE /std:c++17)
+endif()
+
+target_compile_features(TCodeIME PUBLIC cxx_std_17)
 
 target_include_directories(TCodeIME PRIVATE 
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -67,7 +56,7 @@ target_link_libraries(TCodeIME PRIVATE
 )
 
 target_compile_definitions(TCodeIME PRIVATE UNICODE _UNICODE)
-set_target_properties(TCodeIME PROPERTIES PREFIX "")
+set_target_properties(TCodeIME PROPERTIES LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/TCodeIME.def")
 
 # -----------------------------------------------------------------------------
 # TCodeProxy (C# Project)
@@ -119,7 +108,8 @@ endif()
 option(BUILD_MSIX "Build the modern MSIX package using winapp CLI" ON)
 
 if(BUILD_MSIX)
-    find_program(POWERSHELL_EXECUTABLE powershell)
+    find_program(POWERSHELL_EXECUTABLE powershell REQUIRED)
+
     if(NOT POWERSHELL_EXECUTABLE)
         message(WARNING "powershell.exe not found. The 'TCodeMSIX' target will not be available.")
     else()
@@ -127,10 +117,20 @@ if(BUILD_MSIX)
             COMMAND ${POWERSHELL_EXECUTABLE}
                 -ExecutionPolicy Bypass
                 -File "${CMAKE_CURRENT_SOURCE_DIR}/packaging/build_package.ps1"
+                -Version ${PROJECT_VERSION}
+                -PackageName ${PACKAGE_NAME}
+                -PublisherGuid ${PUBLISHER_GUID}
+                -DisplayName "${DISPLAY_NAME}"
+                -PublisherDisplayName "${PUBLISHER_DISPLAY_NAME}"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
-            DEPENDS TCodeIME TCodeProxy
             COMMENT "Building signed MSIX package using winapp CLI ($<CONFIG>)"
         )
     endif()
 endif()
 
+# Clean up build artifacts
+add_custom_target(Clean
+    COMMAND ${CMAKE_COMMAND} -E remove_directory build
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Cleaning build directory"
+)

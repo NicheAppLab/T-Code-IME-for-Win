@@ -40,11 +40,16 @@ proto/*.pb.cc
 # Logs
 *.log
 
+# IDE
+.vscode/
+.antigravitycli/
+.continue/
+
 # OS files
 Thumbs.db
 Desktop.ini
 
 engine/
 
-# Ou
+# sensitive files
 packaging/output/TCodeIME_cert.pfx

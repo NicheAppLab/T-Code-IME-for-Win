@@ -1,6 +1,6 @@
 #define MyAppName "T-Code IME"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "T-Code"
+#define MyAppPublisher "Niche App Lab"
 #define SourcePath ".."
 
 [Setup]
