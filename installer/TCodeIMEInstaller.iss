@@ -1,11 +1,10 @@
 #define MyAppName "T-Code IME"
-#define MyAppVersion "1.0.0"
 #define MyAppPublisher "Niche App Lab"
 #define SourcePath ".."
 
 [Setup]
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
+AppVersion=@PROJECT_VERSION@
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
@@ -33,7 +32,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #endif
 
 [Files]
-Source: "{#TCodeIMEDllPath}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TCodeIMEDllPath}"; DestDir: "{app}"; Flags: ignoreversion regserver
 Source: "{#TCodeProxyBinDir}\*"; DestDir: "{app}\proxy"; Flags: recursesubdirs createallsubdirs
 Source: "{#SourcePath}\engine\*"; DestDir: "{app}\engine"; Flags: recursesubdirs createallsubdirs
 
@@ -44,11 +43,12 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 [Registry]
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "TCodeIME Proxy"; ValueData: """{app}\proxy\TCodeProxy.exe"""; Flags: uninsdeletevalue
 
-[Run]
-Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\TCodeIME.dll"""; StatusMsg: "Registering T-Code IME..."; Flags: runhidden shellexec
-Filename: "{app}\TCodeProxy.exe"; Description: "Launch T-Code IME Proxy"; Flags: nowait skipifdoesntexist postinstall
+; [Run] section removed – registration handled by regserver flag
+; No manual regsvr32 call needed
+; Proxy launch can stay in a separate task if required
 
 [UninstallRun]
+Filename: "taskkill.exe"; Parameters: "/F /IM TCodeProxy.exe"; Flags: runhidden; RunOnceId: "Kill TCodeProxy"
 Filename: "{sys}\regsvr32.exe"; Parameters: "/s /u ""{app}\TCodeIME.dll"""; Flags: runhidden shellexec; RunOnceId: "UnregisterTCodeIME"
 
 [Code]

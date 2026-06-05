@@ -2,7 +2,7 @@ LIBRARY TCodeIME
 
 EXPORTS
     DllMain
-    DllRegisterServer
-    DllUnregisterServer
-    DllGetClassObject
-    DllCanUnloadNow
+    DllRegisterServer PRIVATE
+    DllUnregisterServer PRIVATE
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

@@ -4,6 +4,7 @@ out/
 bin/
 obj/
 packaging/output/
+build_test/
 
 # vcpkg
 vcpkg_installed/
@@ -39,6 +40,7 @@ proto/*.pb.cc
 
 # Logs
 *.log
+build_log.txt
 
 # IDE
 .vscode/
@@ -53,3 +55,6 @@ engine/
 
 # sensitive files
 packaging/output/TCodeIME_cert.pfx
+devcert.pfx
+build_log.txt
+packaging/layout/AppxManifest.xml

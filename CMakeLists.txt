@@ -1,11 +1,11 @@
 # CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.20)
-project(TCodeIMEForWin VERSION 0.1.0 LANGUAGES CXX)
+project(TCodeIMEForWin VERSION 0.1.1.0 LANGUAGES CXX)
 
-# Set package identity and publisher GUID for MSIX
+# Set package identity and publisher for MSIX
 set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
-set(PUBLISHER_GUID "2BF2953C-66FF-4938-ACE4-42FB3950D28C")
+set(PUBLISHER_DN "CN=NicheAppLab")
 set(DISPLAY_NAME "T-Code IME")
 set(PUBLISHER_DISPLAY_NAME "Niche App Lab")
 set(CMAKE_CXX_STANDARD 17)
@@ -25,6 +25,7 @@ set(IME_SRC_FILES
     src/TCodeIME.cpp
     src/dllmain.cpp
     src/ClassFactory.cpp
+    src/CTCodeModeButton.cpp
     src/Globals.cpp
     src/IPCClient.cpp
     src/PipeServer.cpp
@@ -73,7 +74,10 @@ add_custom_target(TCodeProxy ALL
 # TCodeInstaller (Inno Setup Installer)
 # -----------------------------------------------------------------------------
 option(BUILD_INSTALLER "Build the Inno Setup installer package" ON)
-
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"
+    @ONLY
+)
 if(BUILD_INSTALLER)
     find_program(ISCC_EXECUTABLE ISCC
         PATHS
@@ -103,28 +107,81 @@ if(BUILD_INSTALLER)
 endif()
 
 # -----------------------------------------------------------------------------
-# TCodeMSIX (Winapp CLI MSIX Package)
+# TCodeMSIX (Winapp CLI MSIX Package) - すべてをCMake側で処理
 # -----------------------------------------------------------------------------
 option(BUILD_MSIX "Build the modern MSIX package using winapp CLI" ON)
 
 if(BUILD_MSIX)
-    find_program(POWERSHELL_EXECUTABLE powershell REQUIRED)
+    # 1. 4部構成の厳密なMSIXバージョン文字列を作成 (例: 0.1.1.0)
+    set(MSIX_VERSION "${PROJECT_VERSION}")
+    
+    # 2. Read the template and generate the manifest with proper substitution
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Package.appxmanifest.in" MANIFEST_TEMPLATE)
+    
+    # 3. Create resource entries (each on a new line)
+    set(RESOURCES_XML "")
+    set(IME_RESOURCES en-us ja-jp)
+    foreach(lang ${IME_RESOURCES})
+        string(APPEND RESOURCES_XML "    <Resource Language=\"${lang}\" />\n")
+    endforeach()
+    
+    # 4. Perform variable substitution
+    string(REPLACE "@PACKAGE_NAME@" "${PACKAGE_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@PUBLISHER_DN@" "${PUBLISHER_DN}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@PROJECT_VERSION@" "${PROJECT_VERSION}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@DISPLAY_NAME@" "${DISPLAY_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@PUBLISHER_DISPLAY_NAME@" "${PUBLISHER_DISPLAY_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@RESOURCES_XML@" "${RESOURCES_XML}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    
+    # 5. Write the manifest and copy to layout directory
+    set(MANIFEST_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Package.appxmanifest")
+    set(MANIFEST_LAYOUT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/layout/AppxManifest.xml")
+    file(WRITE "${MANIFEST_SOURCE}" "${MANIFEST_TEMPLATE}")
+    configure_file("${MANIFEST_SOURCE}" "${MANIFEST_LAYOUT}" COPYONLY)
 
-    if(NOT POWERSHELL_EXECUTABLE)
-        message(WARNING "powershell.exe not found. The 'TCodeMSIX' target will not be available.")
+    # 6. Find winapp CLI and SignTool
+    find_program(WINAPP_EXECUTABLE winapp REQUIRED)
+    
+    find_program(SIGNTOOL_EXECUTABLE signtool
+        PATHS
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26200.0/x64"
+            "C:/Program Files/Windows Kits/10/bin/x64"
+        NO_DEFAULT_PATH
+    )
+    
+    if(NOT SIGNTOOL_EXECUTABLE)
+        find_program(SIGNTOOL_EXECUTABLE signtool)
+    endif()
+    
+    if(NOT WINAPP_EXECUTABLE)
+        message(WARNING "winapp CLI not found. The 'TCodeMSIX' target will not be available.")
     else()
-        add_custom_target(TCodeMSIX
-            COMMAND ${POWERSHELL_EXECUTABLE}
-                -ExecutionPolicy Bypass
-                -File "${CMAKE_CURRENT_SOURCE_DIR}/packaging/build_package.ps1"
-                -Version ${PROJECT_VERSION}
-                -PackageName ${PACKAGE_NAME}
-                -PublisherGuid ${PUBLISHER_GUID}
-                -DisplayName "${DISPLAY_NAME}"
-                -PublisherDisplayName "${PUBLISHER_DISPLAY_NAME}"
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
-            COMMENT "Building signed MSIX package using winapp CLI ($<CONFIG>)"
-        )
+        set(LAYOUT_DIR "layout")
+        set(OUTPUT_DIR "output")
+        set(MSIX_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/output/TCodeIME.msix")
+        option(SIGN_MSIX "Sign MSIX with certificate" OFF)
+        option(CERTIFICATE_PATH "Path to certificate file (.pfx)" "")
+        option(CERTIFICATE_PASSWORD "Password for certificate (optional)" "")
+
+        if(SIGN_MSIX AND SIGNTOOL_EXECUTABLE AND CERTIFICATE_PATH AND NOT CERTIFICATE_PATH STREQUAL "")
+            # Build and sign MSIX with existing certificate
+            add_custom_target(TCodeMSIX
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME.msix" -v
+                COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+                COMMENT "Building and signing MSIX package with winapp ($<CONFIG>)"
+            )
+        else()
+            # Build MSIX without signing using winapp CLI
+            add_custom_target(TCodeMSIX
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME.msix" -v
+                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+                COMMENT "Building MSIX package using winapp CLI ($<CONFIG>)"
+            )
+        endif()
     endif()
 endif()
 

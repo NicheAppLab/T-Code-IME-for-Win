@@ -1,6 +1,13 @@
 #include "TCodeIME.h"
-#include "Globals.h"
-
+// Removed duplicate Deactivate stub (lines 140-143) - will rely on actual implementation below
+#include "CTCodeModeButton.h"
+#include "Globals.h" // needed for DllAddRef/DllRelease
+// In ActivateEx, replace AddItem call with proper cast
+#include <ctfutb.h>
+#include "resource.h"
+#ifndef TF_LBI_STYLE_TEXT
+#define TF_LBI_STYLE_TEXT 0x00000002
+#endif
 class CManageCompositionEditSession : public ITfEditSession {
 public:
     CManageCompositionEditSession(CTCodeIME* pIME, ITfContext* pContext, const std::wstring& committed, const std::wstring& composition) 
@@ -102,18 +109,14 @@ private:
     std::wstring _composition;
 };
 
-CTCodeIME::CTCodeIME() 
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE)
+CTCodeIME::CTCodeIME()
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE), _pLangBarItemSink(nullptr), _pModeButton(new CTCodeModeButton(this))
 {
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
 }
 
-CTCodeIME::~CTCodeIME() {
-    if (_pIPCClient) delete _pIPCClient;
-    if (_pComposition) _pComposition->Release();
-    DllRelease();
-}
+#include "CTCodeModeButton.h"
 
 STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
     if (ppvObj == nullptr) return E_INVALIDARG;
@@ -122,11 +125,25 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
         *ppvObj = static_cast<ITfTextInputProcessorEx*>(this);
     } else if (IsEqualIID(riid, IID_ITfKeyEventSink)) {
         *ppvObj = static_cast<ITfKeyEventSink*>(this);
-    } else if (IsEqualIID(riid, IID_ITfCompositionSink)) {
-        *ppvObj = static_cast<ITfCompositionSink*>(this);
+    } else if (IsEqualIID(riid, IID_ITfSource)) {
+        *ppvObj = static_cast<ITfSource*>(this);
     }
     if (*ppvObj) { AddRef(); return S_OK; }
-    return E_NOINTERFACE;
+}
+
+// Destructor release resources
+CTCodeIME::~CTCodeIME() {
+    if (_pIPCClient) delete _pIPCClient;
+    if (_pComposition) _pComposition->Release();
+    if (_pModeButton) {
+        _pModeButton->Release();
+        _pModeButton = nullptr;
+    }
+    if (_pLangBarItemSink) {
+        _pLangBarItemSink->Release();
+        _pLangBarItemSink = nullptr;
+    }
+    DllRelease();
 }
 
 STDMETHODIMP_(ULONG) CTCodeIME::AddRef() { return InterlockedIncrement(&_cRef); }
@@ -146,11 +163,28 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
         pKeystrokeMgr->AdviseKeyEventSink(_tfClientId, static_cast<ITfKeyEventSink*>(this), TRUE);
         pKeystrokeMgr->Release();
     }
+    ITfLangBarItemMgr* pLangBarItemMgr;
+    if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
+        pLangBarItemMgr->AddItem(_pModeButton);
+        pLangBarItemMgr->Release();
+    }
     return S_OK;
 }
 
+// Deactivate: remove mode button from language bar and release resources
 STDMETHODIMP CTCodeIME::Deactivate() {
     if (_pThreadMgr) {
+        ITfLangBarItemMgr* pLangBarItemMgr;
+        if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
+            // Remove the mode button we added during activation
+            if (_pModeButton) {
+                pLangBarItemMgr->RemoveItem(_pModeButton);
+                // Release reference held by language bar (if any)
+                _pModeButton->Release();
+                _pModeButton = nullptr;
+            }
+            pLangBarItemMgr->Release();
+        }
         ITfKeystrokeMgr* pKeystrokeMgr;
         if (_pThreadMgr->QueryInterface(IID_ITfKeystrokeMgr, (void**)&pKeystrokeMgr) == S_OK) {
             pKeystrokeMgr->UnadviseKeyEventSink(_tfClientId);
@@ -162,6 +196,7 @@ STDMETHODIMP CTCodeIME::Deactivate() {
     _tfClientId = TF_CLIENTID_NULL;
     return S_OK;
 }
+
 
 STDMETHODIMP CTCodeIME::OnSetFocus(BOOL fForeground) { return S_OK; }
 
@@ -221,6 +256,9 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
 
     if (isCtrlSlash) {
         _fDirectInputMode = !_fDirectInputMode;
+        if (_pLangBarItemSink) {
+            _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+        }
         if (_fDirectInputMode) {
             // Cancel composition when switching to direct input mode
             if (_pComposition) {
@@ -277,3 +315,39 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
 STDMETHODIMP CTCodeIME::OnTestKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
 STDMETHODIMP CTCodeIME::OnKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
 STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext *pic, REFGUID rguid, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
+
+// Removed old ITfLangBarItemButton methods from CTCodeIME; functionality now provided by CTCodeModeButton.
+
+// ITfSource methods
+STDMETHODIMP CTCodeIME::AdviseSink(REFIID riid, IUnknown *pUnk, DWORD *pdwCookie) {
+    if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_NOINTERFACE;
+    if (_pLangBarItemSink != nullptr) return E_FAIL;
+    if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pLangBarItemSink) != S_OK) {
+        return E_NOINTERFACE;
+    }
+    *pdwCookie = 1;
+    return S_OK;
+}
+
+// Helper methods for Direct Input mode
+BOOL CTCodeIME::IsDirectInputMode() const {
+    return _fDirectInputMode;
+}
+
+void CTCodeIME::ToggleDirectInputMode() {
+    _fDirectInputMode = !_fDirectInputMode;
+    if (_pLangBarItemSink) {
+        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+    }
+}
+
+
+
+STDMETHODIMP CTCodeIME::UnadviseSink(DWORD dwCookie) {
+    if (dwCookie != 1) return E_INVALIDARG;
+    if (_pLangBarItemSink) {
+        _pLangBarItemSink->Release();
+        _pLangBarItemSink = nullptr;
+    }
+    return S_OK;
+}
