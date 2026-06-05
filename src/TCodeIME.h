@@ -6,8 +6,8 @@ class CTCodeModeButton;
 
 class CTCodeIME : public ITfTextInputProcessorEx,
                   public ITfKeyEventSink,
-                  public ITfCompositionSink,
-                  public ITfSource
+                  public ITfCompositionSink
+                  // ITfSource removed – brand button replaced by CTCodeModeButton
 {
 public:
     CTCodeIME();
@@ -38,10 +38,6 @@ public:
     // ITfCompositionSink methods
     STDMETHODIMP OnCompositionTerminated(TfEditCookie ecWrite, ITfComposition *pComposition);
 
-    // ITfSource methods
-    STDMETHODIMP AdviseSink(REFIID riid, IUnknown *pUnk, DWORD *pdwCookie);
-    STDMETHODIMP UnadviseSink(DWORD dwCookie);
-
 private:
     LONG _cRef;
     ITfThreadMgr* _pThreadMgr;
@@ -49,7 +45,7 @@ private:
     tcode::IPCClient* _pIPCClient;
     ITfComposition* _pComposition;
     BOOL _fDirectInputMode;
-    ITfLangBarItemSink* _pLangBarItemSink;
     CTCodeModeButton* _pModeButton;
     friend class CManageCompositionEditSession;
 };
+

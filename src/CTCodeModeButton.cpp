@@ -9,6 +9,13 @@
 #ifndef TF_LBI_STYLE_TEXT
 #define TF_LBI_STYLE_TEXT 0x00000002
 #endif
+#ifndef TF_LBI_TITLE
+#define TF_LBI_TITLE 0x00000004
+#endif
+
+#ifndef TF_LBI_STYLE_SHOWNINTRAY
+#define TF_LBI_STYLE_SHOWNINTRAY 0x10000000
+#endif
 
 // Constructor stores owner pointer and adds reference
 CTCodeModeButton::CTCodeModeButton(CTCodeIME* pOwner)
@@ -60,8 +67,7 @@ STDMETHODIMP CTCodeModeButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
     if (!pInfo) return E_INVALIDARG;
     pInfo->clsidService = CLSID_TCodeIME; // same CLSID as IME service
     // Unique GUID for this button item
-    static const GUID GUID_ModeButton = { 0xA1B2C3D4, 0x1122, 0x3344, {0x55,0x66,0x77,0x88,0x99,0xAA,0xBB,0xCC} };
-    pInfo->guidItem = GUID_ModeButton;
+    pInfo->guidItem = GUID_LBI_Branding;
     pInfo->dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_TEXT;
     wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), L"T‑Code Mode");
     pInfo->ulSort = 0;
@@ -86,9 +92,10 @@ STDMETHODIMP CTCodeModeButton::GetTooltipString(BSTR* pbstrToolTip) {
     return *pbstrToolTip ? S_OK : E_OUTOFMEMORY;
 }
 
-// GetIcon – choose icon based on current mode
+// GetIcon – debug: use brand icons temporarily
 STDMETHODIMP CTCodeModeButton::GetIcon(HICON* phIcon) {
     if (!phIcon) return E_INVALIDARG;
+    // Temporary: use brand icons to test if button works at all
     int iconId = (_pOwner && _pOwner->IsDirectInputMode()) ? IDI_ICON_DIRECT : IDI_ICON_TCODE;
     *phIcon = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(iconId), IMAGE_ICON,
                               GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
@@ -105,10 +112,9 @@ STDMETHODIMP CTCodeModeButton::GetText(BSTR* pbstrText) {
 
 // ITfLangBarItemButton methods
 STDMETHODIMP CTCodeModeButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcArea) {
-    // Forward click to owner – toggle mode
     if (_pOwner) {
-        // Simulate a Ctrl+/ press which toggles mode in CTCodeIME::OnKeyDown
-        _pOwner->OnKeyDown(nullptr, VK_OEM_2, 0, nullptr);
+        _pOwner->OnKeyDown(nullptr, VK_OEM_2, 0, nullptr);   // simulates Ctrl+/
+        UpdateIcon();                                          // refresh our icon
     }
     return S_OK;
 }
@@ -137,4 +143,10 @@ STDMETHODIMP CTCodeModeButton::UnadviseSink(DWORD dwCookie) {
         _pSink = nullptr;
     }
     return S_OK;
+}
+
+void CTCodeModeButton::UpdateIcon() {
+    if (_pSink) {
+        _pSink->OnUpdate(TF_LBI_ICON | TF_LBI_TITLE);
+    }
 }

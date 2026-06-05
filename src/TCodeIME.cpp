@@ -110,7 +110,7 @@ private:
 };
 
 CTCodeIME::CTCodeIME()
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE), _pLangBarItemSink(nullptr), _pModeButton(new CTCodeModeButton(this))
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE),  _pModeButton(new CTCodeModeButton(this))
 {
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
@@ -125,10 +125,11 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
         *ppvObj = static_cast<ITfTextInputProcessorEx*>(this);
     } else if (IsEqualIID(riid, IID_ITfKeyEventSink)) {
         *ppvObj = static_cast<ITfKeyEventSink*>(this);
-    } else if (IsEqualIID(riid, IID_ITfSource)) {
-        *ppvObj = static_cast<ITfSource*>(this);
+
+
     }
     if (*ppvObj) { AddRef(); return S_OK; }
+    return E_NOINTERFACE;
 }
 
 // Destructor release resources
@@ -139,10 +140,11 @@ CTCodeIME::~CTCodeIME() {
         _pModeButton->Release();
         _pModeButton = nullptr;
     }
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->Release();
-        _pLangBarItemSink = nullptr;
-    }
+
+
+
+
+
     DllRelease();
 }
 
@@ -256,8 +258,8 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
 
     if (isCtrlSlash) {
         _fDirectInputMode = !_fDirectInputMode;
-        if (_pLangBarItemSink) {
-            _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+        if (_pModeButton) {
+            _pModeButton->UpdateIcon();
         }
         if (_fDirectInputMode) {
             // Cancel composition when switching to direct input mode
@@ -318,17 +320,6 @@ STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext *pic, REFGUID rguid, BOOL *pfE
 
 // Removed old ITfLangBarItemButton methods from CTCodeIME; functionality now provided by CTCodeModeButton.
 
-// ITfSource methods
-STDMETHODIMP CTCodeIME::AdviseSink(REFIID riid, IUnknown *pUnk, DWORD *pdwCookie) {
-    if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_NOINTERFACE;
-    if (_pLangBarItemSink != nullptr) return E_FAIL;
-    if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pLangBarItemSink) != S_OK) {
-        return E_NOINTERFACE;
-    }
-    *pdwCookie = 1;
-    return S_OK;
-}
-
 // Helper methods for Direct Input mode
 BOOL CTCodeIME::IsDirectInputMode() const {
     return _fDirectInputMode;
@@ -336,18 +327,7 @@ BOOL CTCodeIME::IsDirectInputMode() const {
 
 void CTCodeIME::ToggleDirectInputMode() {
     _fDirectInputMode = !_fDirectInputMode;
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+    if (_pModeButton) {
+        _pModeButton->UpdateIcon();
     }
-}
-
-
-
-STDMETHODIMP CTCodeIME::UnadviseSink(DWORD dwCookie) {
-    if (dwCookie != 1) return E_INVALIDARG;
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->Release();
-        _pLangBarItemSink = nullptr;
-    }
-    return S_OK;
 }

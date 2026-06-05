@@ -34,7 +34,7 @@ public:
     STDMETHODIMP UnadviseSink(DWORD dwCookie);
 
     void Refresh();
-
+    void UpdateIcon();
 private:
     LONG _cRef;
     CTCodeIME* _pOwner; // not owned
