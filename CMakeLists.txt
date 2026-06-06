@@ -26,6 +26,7 @@ set(IME_SRC_FILES
     src/dllmain.cpp
     src/ClassFactory.cpp
     src/CTCodeModeButton.cpp
+    src/CTBrandButton.cpp
     src/Globals.cpp
     src/IPCClient.cpp
     src/PipeServer.cpp

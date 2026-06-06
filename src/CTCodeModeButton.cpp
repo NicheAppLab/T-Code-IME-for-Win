@@ -9,9 +9,6 @@
 #ifndef TF_LBI_STYLE_TEXT
 #define TF_LBI_STYLE_TEXT 0x00000002
 #endif
-#ifndef TF_LBI_TITLE
-#define TF_LBI_TITLE 0x00000004
-#endif
 
 #ifndef TF_LBI_STYLE_SHOWNINTRAY
 #define TF_LBI_STYLE_SHOWNINTRAY 0x10000000
@@ -65,23 +62,21 @@ STDMETHODIMP_(ULONG) CTCodeModeButton::Release() {
 // ITfLangBarItem methods
 STDMETHODIMP CTCodeModeButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
     if (!pInfo) return E_INVALIDARG;
-    pInfo->clsidService = CLSID_TCodeIME; // same CLSID as IME service
-    // Unique GUID for this button item
-    pInfo->guidItem = GUID_LBI_Branding;
-    pInfo->dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_TEXT;
+    pInfo->clsidService = CLSID_TCodeIME;
+    pInfo->guidItem = GUID_LBI_Mode;
+    pInfo->dwStyle = TF_LBI_STYLE_BTN_MENU | TF_LBI_STYLE_SHOWNINTRAY;
     wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), L"T‑Code Mode");
-    pInfo->ulSort = 0;
+    pInfo->ulSort = 1;
     return S_OK;
 }
 
 STDMETHODIMP CTCodeModeButton::GetStatus(DWORD* pdwStatus) {
     if (!pdwStatus) return E_INVALIDARG;
-    *pdwStatus = 0; // always enabled/visible
+    *pdwStatus = 0;
     return S_OK;
 }
 
 STDMETHODIMP CTCodeModeButton::Show(BOOL fShow) {
-    // Always shown in the language bar
     return S_OK;
 }
 
@@ -92,11 +87,11 @@ STDMETHODIMP CTCodeModeButton::GetTooltipString(BSTR* pbstrToolTip) {
     return *pbstrToolTip ? S_OK : E_OUTOFMEMORY;
 }
 
-// GetIcon – debug: use brand icons temporarily
+// GetIcon – use the correct mode icons
 STDMETHODIMP CTCodeModeButton::GetIcon(HICON* phIcon) {
     if (!phIcon) return E_INVALIDARG;
-    // Temporary: use brand icons to test if button works at all
-    int iconId = (_pOwner && _pOwner->IsDirectInputMode()) ? IDI_ICON_DIRECT : IDI_ICON_TCODE;
+    // Use the correct icons based on the current mode
+    int iconId = (_pOwner && _pOwner->IsDirectInputMode()) ? IDI_ICON_MODE_DIRECT : IDI_ICON_MODE_TCODE;
     *phIcon = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(iconId), IMAGE_ICON,
                               GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
     return *phIcon ? S_OK : E_FAIL;
@@ -105,24 +100,26 @@ STDMETHODIMP CTCodeModeButton::GetIcon(HICON* phIcon) {
 // GetText – visible text on the button
 STDMETHODIMP CTCodeModeButton::GetText(BSTR* pbstrText) {
     if (!pbstrText) return E_INVALIDARG;
-    const wchar_t* txt = (_pOwner && _pOwner->IsDirectInputMode()) ? L"A" : L"あ";
-    *pbstrText = SysAllocString(txt);
+    // Set button text based on current mode
+    const wchar_t* text = _pOwner && _pOwner->IsDirectInputMode() ? L"A" : L"あ";
+    *pbstrText = SysAllocString(text);
     return *pbstrText ? S_OK : E_OUTOFMEMORY;
 }
 
 // ITfLangBarItemButton methods
 STDMETHODIMP CTCodeModeButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcArea) {
     if (_pOwner) {
-        _pOwner->OnKeyDown(nullptr, VK_OEM_2, 0, nullptr);   // simulates Ctrl+/
-        UpdateIcon();                                          // refresh our icon
+        _pOwner->ToggleInputMode(); // Toggle the input mode
     }
     return S_OK;
 }
 
+// ITfLangBarItemButton::InitMenu (not implemented)
 STDMETHODIMP CTCodeModeButton::InitMenu(ITfMenu* pMenu) {
-    return S_OK; // No custom menu needed
+    return S_OK;
 }
 
+// ITfLangBarItemButton::OnMenuSelect (not implemented)
 STDMETHODIMP CTCodeModeButton::OnMenuSelect(UINT wID) {
     return S_OK;
 }
@@ -130,9 +127,9 @@ STDMETHODIMP CTCodeModeButton::OnMenuSelect(UINT wID) {
 // ITfSource implementation
 STDMETHODIMP CTCodeModeButton::AdviseSink(REFIID riid, IUnknown* pUnk, DWORD* pdwCookie) {
     if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_NOINTERFACE;
-    if (_pSink) return E_FAIL; // already advised
+    if (_pSink) return E_FAIL; // Already have a sink
     if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pSink) != S_OK) return E_NOINTERFACE;
-    *pdwCookie = 1; // simple fixed cookie
+    *pdwCookie = 1; // Simple cookie
     return S_OK;
 }
 
@@ -147,6 +144,6 @@ STDMETHODIMP CTCodeModeButton::UnadviseSink(DWORD dwCookie) {
 
 void CTCodeModeButton::UpdateIcon() {
     if (_pSink) {
-        _pSink->OnUpdate(TF_LBI_ICON | TF_LBI_TITLE);
+        _pSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
     }
 }

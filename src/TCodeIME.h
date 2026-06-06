@@ -3,6 +3,7 @@
 #include <msctf.h>
 #include "IPCClient.h"
 class CTCodeModeButton;
+class CTBrandButton;
 
 class CTCodeIME : public ITfTextInputProcessorEx,
                   public ITfKeyEventSink,
@@ -25,7 +26,7 @@ public:
     // ITfTextInputProcessorEx methods
     STDMETHODIMP ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwFlags);
     BOOL IsDirectInputMode() const;
-    void ToggleDirectInputMode();
+    void ToggleInputMode(); // Renamed from ToggleDirectInputMode
 
     // ITfKeyEventSink methods
     STDMETHODIMP OnSetFocus(BOOL fForeground);
@@ -46,6 +47,7 @@ private:
     ITfComposition* _pComposition;
     BOOL _fDirectInputMode;
     CTCodeModeButton* _pModeButton;
+    CTBrandButton* _pBrandButton; // Added declaration for brand button
     friend class CManageCompositionEditSession;
 };
 

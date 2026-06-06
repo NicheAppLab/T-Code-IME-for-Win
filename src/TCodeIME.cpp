@@ -1,6 +1,7 @@
 #include "TCodeIME.h"
 // Removed duplicate Deactivate stub (lines 140-143) - will rely on actual implementation below
 #include "CTCodeModeButton.h"
+#include "CTBrandButton.h"
 #include "Globals.h" // needed for DllAddRef/DllRelease
 // In ActivateEx, replace AddItem call with proper cast
 #include <ctfutb.h>
@@ -110,14 +111,13 @@ private:
 };
 
 CTCodeIME::CTCodeIME()
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE),  _pModeButton(new CTCodeModeButton(this))
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE), _pModeButton(new CTCodeModeButton(this)), _pBrandButton(new CTBrandButton(this))
 {
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
 }
 
 #include "CTCodeModeButton.h"
-
 STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
     if (ppvObj == nullptr) return E_INVALIDARG;
     *ppvObj = nullptr;
@@ -140,10 +140,10 @@ CTCodeIME::~CTCodeIME() {
         _pModeButton->Release();
         _pModeButton = nullptr;
     }
-
-
-
-
+    if (_pBrandButton) {
+        _pBrandButton->Release();
+        _pBrandButton = nullptr;
+    }
 
     DllRelease();
 }
@@ -167,23 +167,37 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
     }
     ITfLangBarItemMgr* pLangBarItemMgr;
     if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
-        pLangBarItemMgr->AddItem(_pModeButton);
+        // Add the mode button we created
+        if (_pModeButton) {
+            pLangBarItemMgr->AddItem(_pModeButton);
+            _pModeButton->AddRef(); // AddRef for the language bar
+        }
+        // Add the brand button
+        if (_pBrandButton) {
+            pLangBarItemMgr->AddItem(_pBrandButton);
+            _pBrandButton->AddRef(); // AddRef for the language bar
+        }
         pLangBarItemMgr->Release();
     }
     return S_OK;
 }
 
-// Deactivate: remove mode button from language bar and release resources
+// Deactivate: remove mode button and brand button from language bar and release resources
 STDMETHODIMP CTCodeIME::Deactivate() {
     if (_pThreadMgr) {
         ITfLangBarItemMgr* pLangBarItemMgr;
         if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
-            // Remove the mode button we added during activation
+            // Remove the mode button
             if (_pModeButton) {
                 pLangBarItemMgr->RemoveItem(_pModeButton);
-                // Release reference held by language bar (if any)
-                _pModeButton->Release();
+                _pModeButton->Release(); // Release reference held by language bar
                 _pModeButton = nullptr;
+            }
+            // Remove the brand button
+            if (_pBrandButton) {
+                pLangBarItemMgr->RemoveItem(_pBrandButton);
+                _pBrandButton->Release(); // Release reference held by language bar
+                _pBrandButton = nullptr;
             }
             pLangBarItemMgr->Release();
         }
@@ -198,7 +212,6 @@ STDMETHODIMP CTCodeIME::Deactivate() {
     _tfClientId = TF_CLIENTID_NULL;
     return S_OK;
 }
-
 
 STDMETHODIMP CTCodeIME::OnSetFocus(BOOL fForeground) { return S_OK; }
 
@@ -250,7 +263,10 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
     return S_OK;
 }
 
-STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) {
+// OnKeyDown: handle key events
+STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+
     bool isCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     bool isAlt = (GetKeyState(VK_MENU) & 0x8000) != 0;
     bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
@@ -289,7 +305,7 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
         *pfEaten = FALSE;
         return S_OK;
     }
-    
+
     std::wstring committed, composition;
     bool isActive = false;
     bool inputConsumed = _pIPCClient->SendInput((uint32_t)wParam, committed, composition, &isActive);
@@ -314,18 +330,31 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
     return S_OK;
 }
 
-STDMETHODIMP CTCodeIME::OnTestKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
-STDMETHODIMP CTCodeIME::OnKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
-STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext *pic, REFGUID rguid, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
+STDMETHODIMP CTCodeIME::OnTestKeyUp(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
+    return S_OK;
+}
 
-// Removed old ITfLangBarItemButton methods from CTCodeIME; functionality now provided by CTCodeModeButton.
+STDMETHODIMP CTCodeIME::OnKeyUp(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
+    return S_OK;
+}
 
-// Helper methods for Direct Input mode
-BOOL CTCodeIME::IsDirectInputMode() const {
+STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext* pic, REFGUID rguid, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
+    return S_OK;
+}
+
+// IsDirectInputMode: return the current input mode
+BOOL CTCodeIME::IsDirectInputMode() const { // Added const qualifier
     return _fDirectInputMode;
 }
 
-void CTCodeIME::ToggleDirectInputMode() {
+// ToggleInputMode: toggle the input mode and update the button
+void CTCodeIME::ToggleInputMode() {
     _fDirectInputMode = !_fDirectInputMode;
     if (_pModeButton) {
         _pModeButton->UpdateIcon();
