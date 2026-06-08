@@ -5,18 +5,25 @@
 #include <windows.h>
 #include <ctfutb.h>
 #include "Globals.h"
+#include <variant>
+#include "helper.h"
+#include <string>
 
-#ifndef TF_LBI_STYLE_TEXT
-#define TF_LBI_STYLE_TEXT 0x00000002
-#endif
-
+// Official Microsoft Text Services Framework Language Bar Constants
 #ifndef TF_LBI_STYLE_SHOWNINTRAY
-#define TF_LBI_STYLE_SHOWNINTRAY 0x10000000
+#define TF_LBI_STYLE_SHOWNINTRAY   0x00000002
 #endif
+#ifndef TF_LBI_STYLE_SHOWINDESC
+#define TF_LBI_STYLE_SHOWINDESC    0x00000010
+#endif
+#ifndef TF_LBI_STYLE_BTN_BUTTON
+#define TF_LBI_STYLE_BTN_BUTTON    0x00000000
+#endif
+
+using InputModeVariant = std::variant<std::monostate, int>;
 
 // Constructor stores owner pointer and adds reference
-CTCodeModeButton::CTCodeModeButton(CTCodeIME* pOwner)
-    : _cRef(1), _pOwner(pOwner), _pSink(nullptr) {
+CTCodeModeButton::CTCodeModeButton(CTCodeIME* pOwner) : _cRef(1), _pOwner(pOwner), _pSink(nullptr) {
     if (_pOwner) {
         _pOwner->AddRef();
     }
@@ -31,15 +38,22 @@ CTCodeModeButton::~CTCodeModeButton() {
     }
 }
 
-// IUnknown implementation
 STDMETHODIMP CTCodeModeButton::QueryInterface(REFIID riid, void** ppvObj) {
     if (!ppvObj) return E_INVALIDARG;
     *ppvObj = nullptr;
-    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfLangBarItem) || IsEqualIID(riid, IID_ITfLangBarItemButton)) {
+
+    // Resolve structural inheritance ambiguities cleanly
+    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfLangBarItemButton)) {
         *ppvObj = static_cast<ITfLangBarItemButton*>(this);
-    } else if (IsEqualIID(riid, IID_ITfSource)) {
+    } 
+    else if (IsEqualIID(riid, IID_ITfLangBarItem)) {
+        // Explicitly map to the dedicated ITfLangBarItem vtable path
+        *ppvObj = static_cast<ITfLangBarItem*>(this);
+    } 
+    else if (IsEqualIID(riid, IID_ITfSource)) {
         *ppvObj = static_cast<ITfSource*>(this);
     }
+
     if (*ppvObj) {
         AddRef();
         return S_OK;
@@ -59,20 +73,49 @@ STDMETHODIMP_(ULONG) CTCodeModeButton::Release() {
     return ref;
 }
 
-// ITfLangBarItem methods
-STDMETHODIMP CTCodeModeButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
-    if (!pInfo) return E_INVALIDARG;
+STDMETHODIMP CTCodeModeButton::GetInfo(TF_LANGBARITEMINFO *pInfo) {
+    if (pInfo == nullptr) {
+        return E_INVALIDARG;
+    }
+
     pInfo->clsidService = CLSID_TCodeIME;
-    pInfo->guidItem = GUID_LBI_Mode;
-    pInfo->dwStyle = TF_LBI_STYLE_BTN_MENU | TF_LBI_STYLE_SHOWNINTRAY;
-    wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), L"T‑Code Mode");
-    pInfo->ulSort = 1;
+    pInfo->guidItem = GUID_LBI_INPUTMODE; // Required for Windows 10/11 taskbar tray
+    pInfo->ulSort = 0;
+    pInfo->dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY;
+
+    InputMode currentMode = _pOwner->GetInputMode();
+    const wchar_t* pszDescriptionText = L"Direct Mode";
+
+    if (currentMode == InputMode::Tcode) {
+        pszDescriptionText = L"T-Code Mode";
+    }
+
+    wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), pszDescriptionText);
     return S_OK;
 }
 
-STDMETHODIMP CTCodeModeButton::GetStatus(DWORD* pdwStatus) {
-    if (!pdwStatus) return E_INVALIDARG;
-    *pdwStatus = 0;
+STDMETHODIMP CTCodeModeButton::GetText(BSTR *pbstrText) {
+    if (pbstrText == nullptr) {
+        return E_INVALIDARG;
+    }
+    *pbstrText = nullptr;
+
+    InputMode currentMode = _pOwner->GetInputMode();
+    const wchar_t* pszModeChar = L"A"; // Fallback to Direct alphanumeric mode or Closed
+
+    if (currentMode == InputMode::Tcode) {
+        pszModeChar = L"漢"; // Switch to Hanzi/Kanji representation for T-Code mode
+    }
+
+    *pbstrText = SysAllocString(pszModeChar);
+    return (*pbstrText != nullptr) ? S_OK : E_OUTOFMEMORY;
+}
+
+STDMETHODIMP CTCodeModeButton::GetStatus(DWORD *pdwStatus) {
+    if (pdwStatus == nullptr) return E_INVALIDARG;
+    
+    // Force it to be visible and operational (0 = Enabled and running)
+    *pdwStatus = 0; 
     return S_OK;
 }
 
@@ -81,55 +124,65 @@ STDMETHODIMP CTCodeModeButton::Show(BOOL fShow) {
 }
 
 STDMETHODIMP CTCodeModeButton::GetTooltipString(BSTR* pbstrToolTip) {
-    if (!pbstrToolTip) return E_INVALIDARG;
-    const wchar_t* tip = _pOwner && _pOwner->IsDirectInputMode() ? L"Direct Input Mode (A)" : L"T‑Code IME Mode (あ)";
-    *pbstrToolTip = SysAllocString(tip);
-    return *pbstrToolTip ? S_OK : E_OUTOFMEMORY;
+    if (pbstrToolTip == nullptr) {
+        return E_INVALIDARG;
+    }
+    *pbstrToolTip = nullptr;
+
+    // Use your unified engine state machine to choose the tooltip text
+    InputMode currentMode = _pOwner->GetInputMode();
+    const wchar_t* pszTipText = L"Direct Input Mode (A)";
+
+    if (currentMode == InputMode::Tcode) {
+        pszTipText = L"T-Code IME Mode (漢)";
+    }
+
+    *pbstrToolTip = SysAllocString(pszTipText);
+    return (*pbstrToolTip != nullptr) ? S_OK : E_OUTOFMEMORY;
 }
 
-// GetIcon – use the correct mode icons
-STDMETHODIMP CTCodeModeButton::GetIcon(HICON* phIcon) {
-    if (!phIcon) return E_INVALIDARG;
-    // Use the correct icons based on the current mode
-    int iconId = (_pOwner && _pOwner->IsDirectInputMode()) ? IDI_ICON_MODE_DIRECT : IDI_ICON_MODE_TCODE;
-    *phIcon = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(iconId), IMAGE_ICON,
-                              GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
-    return *phIcon ? S_OK : E_FAIL;
-}
+STDMETHODIMP CTCodeModeButton::GetIcon(HICON *phIcon) {
+    if (phIcon == nullptr) return E_INVALIDARG;
+    *phIcon = nullptr;
 
-// GetText – visible text on the button
-STDMETHODIMP CTCodeModeButton::GetText(BSTR* pbstrText) {
-    if (!pbstrText) return E_INVALIDARG;
-    // Set button text based on current mode
-    const wchar_t* text = _pOwner && _pOwner->IsDirectInputMode() ? L"A" : L"あ";
-    *pbstrText = SysAllocString(text);
-    return *pbstrText ? S_OK : E_OUTOFMEMORY;
+    InputMode currentMode = _pOwner->GetInputMode();
+    if (currentMode == InputMode::Tcode) {
+        *phIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON_MODE_TCODE));
+    } else {
+        *phIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON_MODE_DIRECT));
+    }
+
+    return (*phIcon != nullptr) ? S_OK : S_FALSE;
 }
 
 // ITfLangBarItemButton methods
 STDMETHODIMP CTCodeModeButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcArea) {
     if (_pOwner) {
-        _pOwner->ToggleInputMode(); // Toggle the input mode
+        _pOwner->ToggleInputMode(); // Toggle the input mode on click
     }
     return S_OK;
 }
 
-// ITfLangBarItemButton::InitMenu (not implemented)
 STDMETHODIMP CTCodeModeButton::InitMenu(ITfMenu* pMenu) {
+    if (pMenu == nullptr) return E_INVALIDARG;
     return S_OK;
 }
 
-// ITfLangBarItemButton::OnMenuSelect (not implemented)
 STDMETHODIMP CTCodeModeButton::OnMenuSelect(UINT wID) {
     return S_OK;
 }
 
 // ITfSource implementation
 STDMETHODIMP CTCodeModeButton::AdviseSink(REFIID riid, IUnknown* pUnk, DWORD* pdwCookie) {
-    if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_NOINTERFACE;
-    if (_pSink) return E_FAIL; // Already have a sink
-    if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pSink) != S_OK) return E_NOINTERFACE;
-    *pdwCookie = 1; // Simple cookie
+    if(pUnk == nullptr || pdwCookie == nullptr) return E_INVALIDARG;
+    if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_FAIL;
+    if(_pSink != nullptr) return E_FAIL; 
+
+    if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pSink) == S_OK){
+        *pdwCookie = 1; 
+    } else {
+        return E_NOINTERFACE;
+    }
     return S_OK;
 }
 
@@ -142,8 +195,10 @@ STDMETHODIMP CTCodeModeButton::UnadviseSink(DWORD dwCookie) {
     return S_OK;
 }
 
-void CTCodeModeButton::UpdateIcon() {
-    if (_pSink) {
-        _pSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+HRESULT CTCodeModeButton::UpdateIcon() {
+    if (_pSink == nullptr) {
+        return E_FAIL;
     }
+    // Forces the OS to re-call GetText and GetStatus instantly
+    return _pSink->OnUpdate(TF_LBI_TEXT | TF_LBI_STATUS);
 }

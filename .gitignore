@@ -58,3 +58,4 @@ packaging/output/TCodeIME_cert.pfx
 devcert.pfx
 build_log.txt
 packaging/layout/AppxManifest.xml
+.github/copilot-instructions.md

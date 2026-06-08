@@ -1,14 +1,17 @@
 #pragma once
+#include <atlbase.h>
 #include <windows.h>
 #include <msctf.h>
+#include <memory>
 #include "IPCClient.h"
+#include "helper.h"
 class CTCodeModeButton;
-class CTBrandButton;
 
+enum class InputMode;
 class CTCodeIME : public ITfTextInputProcessorEx,
                   public ITfKeyEventSink,
-                  public ITfCompositionSink
-                  // ITfSource removed – brand button replaced by CTCodeModeButton
+                  public ITfCompositionSink,
+                  public ITfCompartmentEventSink
 {
 public:
     CTCodeIME();
@@ -25,7 +28,7 @@ public:
 
     // ITfTextInputProcessorEx methods
     STDMETHODIMP ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwFlags);
-    BOOL IsDirectInputMode() const;
+    BOOL IsDirectInputMode();
     void ToggleInputMode(); // Renamed from ToggleDirectInputMode
 
     // ITfKeyEventSink methods
@@ -35,9 +38,23 @@ public:
     STDMETHODIMP OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten);
     STDMETHODIMP OnKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten);
     STDMETHODIMP OnPreservedKey(ITfContext *pic, REFGUID rguid, BOOL *pfEaten);
+    HRESULT SetInputMode(InputMode mode);
+    InputMode GetInputMode();
+    BOOL _IsKeyboardDisabled();
+    HRESULT _GetCompartment(REFGUID rguid, InputMode& outMode);
+    HRESULT _SetCompartment(REFGUID rguid, InputMode mode);
 
     // ITfCompositionSink methods
     STDMETHODIMP OnCompositionTerminated(TfEditCookie ecWrite, ITfComposition *pComposition);
+
+    // ITfCompartmentEventSink methods
+    STDMETHODIMP OnChange(REFGUID rguid);
+
+    // Internal helpers
+    BOOL _InitCompartmentEventSink();
+    void _UninitCompartmentEventSink();
+    void _KeyboardOpenCloseChanged();
+    void _KeyboardInputConversionChanged();
 
 private:
     LONG _cRef;
@@ -45,9 +62,11 @@ private:
     TfClientId _tfClientId;
     tcode::IPCClient* _pIPCClient;
     ITfComposition* _pComposition;
-    BOOL _fDirectInputMode;
-    CTCodeModeButton* _pModeButton;
-    CTBrandButton* _pBrandButton; // Added declaration for brand button
+    CComPtr<CTCodeModeButton> _pModeButton;
+    DWORD _dwCompartmentEventSinkOpenCloseCookie;
+    DWORD _dwCompartmentEventSinkInputmodeConversionCookie;
     friend class CManageCompositionEditSession;
+
 };
+
 

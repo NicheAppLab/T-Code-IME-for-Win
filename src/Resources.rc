@@ -3,3 +3,5 @@
 IDI_TCODE_APP_ICON ICON "../icons/icon.ico"
 IDI_TCODE_TRAY_ICON ICON "../icons/icon.ico"
 IDI_TCODE_UAC_ICON ICON "../icons/icon.ico"
+IDI_ICON_MODE_TCODE ICON "../icons/icon.ico"
+IDI_ICON_MODE_DIRECT ICON "../icons/icon.ico"

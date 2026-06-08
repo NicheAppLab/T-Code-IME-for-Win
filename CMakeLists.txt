@@ -25,8 +25,9 @@ set(IME_SRC_FILES
     src/TCodeIME.cpp
     src/dllmain.cpp
     src/ClassFactory.cpp
+    src/Compartment.cpp
+    src/CompartmentEventSink.cpp
     src/CTCodeModeButton.cpp
-    src/CTBrandButton.cpp
     src/Globals.cpp
     src/IPCClient.cpp
     src/PipeServer.cpp
