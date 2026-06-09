@@ -111,8 +111,10 @@ private:
 };
 
 CTCodeIME::CTCodeIME()
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _pModeButton(new CTCodeModeButton(this))
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr)
 {
+    // Attach takes ownership of the initial refcount=1 without adding another reference
+    _pModeButton.Attach(new CTCodeModeButton(this));
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
 }
@@ -124,6 +126,8 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
         *ppvObj = static_cast<ITfTextInputProcessorEx*>(this);
     } else if (IsEqualIID(riid, IID_ITfKeyEventSink)) {
         *ppvObj = static_cast<ITfKeyEventSink*>(this);
+    } else if (IsEqualIID(riid, IID_ITfCompositionSink)) {
+        *ppvObj = static_cast<ITfCompositionSink*>(this);
     } else if (IsEqualIID(riid, IID_ITfCompartmentEventSink)) {
         *ppvObj = static_cast<ITfCompartmentEventSink*>(this);
     }
@@ -136,9 +140,7 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
 CTCodeIME::~CTCodeIME() {
     if (_pIPCClient) delete _pIPCClient;
     if (_pComposition) _pComposition->Release();
-    if (_pModeButton) {
-        _pModeButton = nullptr;
-    }
+    // CComPtr destructors automatically Release() _pModeButton
     DllRelease();
 }
 
@@ -163,10 +165,14 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
         pKeystrokeMgr->AdviseKeyEventSink(_tfClientId, static_cast<ITfKeyEventSink*>(this), TRUE);
         pKeystrokeMgr->Release();
     }
+    // Recreate buttons if they were released (defensive, e.g. if Deactivate nulled them)
+    if (!_pModeButton) {
+        _pModeButton.Attach(new CTCodeModeButton(this));
+    }
     CComPtr<ITfLangBarItemMgr> pLangBarItemMgr;
     if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pLangBarItemMgr))) && pLangBarItemMgr) {
         if (_pModeButton) {
-            // Register it directly into the OS Language Bar/System Tray environment
+            // Register the mode button into the Language Bar
             HRESULT hr = pLangBarItemMgr->AddItem(_pModeButton);
             if (SUCCEEDED(hr)) {
                 fRetBarItem = TRUE;
@@ -178,7 +184,10 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
     _InitCompartmentEventSink();
 
     SetInputMode(InputMode::Direct);
-    return ((fRetKeyMgr && fRetBarItem) ? S_OK : E_FAIL);
+
+    // Return S_OK as long as the keystroke sink was installed successfully.
+    // Language bar items are optional UI and should not block activation.
+    return fRetKeyMgr ? S_OK : E_FAIL;
 }
 
 // Deactivate: remove mode button and brand button from language bar and release resources
@@ -189,16 +198,16 @@ STDMETHODIMP CTCodeIME::Deactivate() {
 
         CComPtr<ITfLangBarItemMgr> pLangBarItemMgr; 
         if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) { 
-            // Remove the mode button 
+            // Remove the mode button from language bar (but keep the object alive via CComPtr)
             if (_pModeButton) { 
                 pLangBarItemMgr->RemoveItem(_pModeButton); 
             } 
         } 
 
-        // Release the mode button reference
-        if (_pModeButton) {
-            _pModeButton = nullptr;
-        }
+        // Release buttons so they get recreated fresh in ActivateEx.
+        // Keeping old button objects across deactivate/reactivate cycles can cause
+        // the language bar to fail re-registration because _pSink may still be set.
+        _pModeButton = nullptr;
 
         ITfKeystrokeMgr* pKeystrokeMgr; 
         if (_pThreadMgr->QueryInterface(IID_ITfKeystrokeMgr, (void**)&pKeystrokeMgr) == S_OK) { 
@@ -241,23 +250,21 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
     bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
     bool isCtrlSlash = isCtrl && !isAlt && !isWin && (wParam == VK_OEM_2);
 
-    InputMode inputmode = GetInputMode();
-
-    if (inputmode == InputMode::Direct) {
-        if (isCtrlSlash) {
-            *pfEaten = TRUE;
-            return S_OK;
-        }
-        *pfEaten = FALSE;
-        return S_OK;
-    }
-
+    // Ctrl+/ always toggles mode regardless of current state
     if (isCtrlSlash) {
         *pfEaten = TRUE;
         return S_OK;
     }
 
-    // Do not capture other Windows shortcuts with modifier keys (Ctrl/Alt/Win)
+    InputMode inputmode = GetInputMode();
+
+    // In Direct mode, only eat Ctrl+/
+    if (inputmode == InputMode::Direct) {
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
+    // In Tcode mode, don't capture modifier keys
     if (isCtrl || isAlt || isWin) {
         *pfEaten = FALSE;
         return S_OK;
@@ -270,7 +277,7 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
         *pfEaten = TRUE; return S_OK; 
     }
     
-    if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN) {
+    if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN || wParam == VK_BACK) {
         *pfEaten = TRUE; return S_OK;
     }
     *pfEaten = FALSE;
@@ -297,8 +304,7 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam,
         SetInputMode(targetMode);
 
         if (_pModeButton) {
-            _pModeButton->Show(true);
-            // Proactively invoke the Language Bar UI update we configured
+            // Proactively invoke the Language Bar UI update
             _pModeButton->UpdateIcon();
         }
 

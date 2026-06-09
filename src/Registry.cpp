@@ -1,5 +1,6 @@
 #include "Registry.h"
 #include "Globals.h"
+#include "resource.h"
 #include <msctf.h>
 #include <string>
 #include <combaseapi.h>
@@ -48,20 +49,37 @@ BOOL RegisterServer() {
     if (CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_ITfInputProcessorProfiles, (void**)&pProfiles) == S_OK && pProfiles) {
         pProfiles->Register(CLSID_TCodeIME);
         
-        // Register as Japanese language layout
-        pProfiles->AddLanguageProfile(CLSID_TCodeIME, 0x0411, GUID_TCODE_PROFILE, IME_DESCRIPTION, (ULONG)lstrlenW(IME_DESCRIPTION), szModule, (ULONG)lstrlenW(szModule), 0);
+        // Register as Japanese language layout with icon from our DLL
+        // pchIconFile = szModule (this DLL contains the icon resources)
+        // cchIconFile = wcslen(szModule)
+        // hIcon = -IDI_ICON_MODE_DIRECT (resource ID, negated as required by TSF)
+        pProfiles->AddLanguageProfile(CLSID_TCodeIME, 0x0411, GUID_TCODE_PROFILE, IME_DESCRIPTION, (ULONG)lstrlenW(IME_DESCRIPTION), szModule, (ULONG)wcslen(szModule), -IDI_TCODE_APP_ICON);
         pProfiles->Release();
     }
     // 3. Category Registration
     ITfCategoryMgr* pCategoryMgr = nullptr;
     if (CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER, IID_ITfCategoryMgr, (void**)&pCategoryMgr) == S_OK && pCategoryMgr) {
-        // Core Category: Register as a standard keyboard
-        pCategoryMgr->RegisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIP_KEYBOARD, CLSID_TCodeIME);
-        
-        // System Tray Categories: Pull straight from msctf.h definitions safely
-        pCategoryMgr->RegisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT, CLSID_TCodeIME);
-        pCategoryMgr->RegisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, CLSID_TCodeIME);
-        
+        // Standard TIP categories (register CLSID_TCodeIME under each)
+        static const GUID c_guidCategory[] = {
+            GUID_TFCAT_TIP_KEYBOARD,
+            GUID_TFCAT_TIPCAP_SECUREMODE,
+            GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+            GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+            GUID_TFCAT_TIPCAP_COMLESS
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory); i++) {
+            pCategoryMgr->RegisterCategory(CLSID_TCodeIME, c_guidCategory[i], CLSID_TCodeIME);
+        }
+
+        // Windows 8 or later categories
+        static const GUID c_guidCategory8[] = {
+            GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+            GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory8); i++) {
+            pCategoryMgr->RegisterCategory(CLSID_TCodeIME, c_guidCategory8[i], CLSID_TCodeIME);
+        }
+
         pCategoryMgr->Release();
     }
 
@@ -72,9 +90,24 @@ BOOL UnregisterServer() {
     // Clean up categories on uninstallation
     ITfCategoryMgr* pCategoryMgr = nullptr;
     if (CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER, IID_ITfCategoryMgr, (void**)&pCategoryMgr) == S_OK && pCategoryMgr) {
-        pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIP_KEYBOARD, CLSID_TCodeIME);
-        pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT, CLSID_TCodeIME);
-        pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, CLSID_TCodeIME);
+        static const GUID c_guidCategory[] = {
+            GUID_TFCAT_TIP_KEYBOARD,
+            GUID_TFCAT_TIPCAP_SECUREMODE,
+            GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+            GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+            GUID_TFCAT_TIPCAP_COMLESS
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory); i++) {
+            pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, c_guidCategory[i], CLSID_TCodeIME);
+        }
+
+        static const GUID c_guidCategory8[] = {
+            GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+            GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory8); i++) {
+            pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, c_guidCategory8[i], CLSID_TCodeIME);
+        }
         pCategoryMgr->Release();
     }
 
@@ -86,10 +119,8 @@ BOOL UnregisterServer() {
 
     std::wstring clsidStr;
     StringFromGUID2W(CLSID_TCodeIME, clsidStr);
-    std::wstring inprocPath = L"CLSID\\" + clsidStr + L"\\InProcServer32";
-    std::wstring keyPath = L"CLSID\\" + clsidStr;
-    RegDeleteKeyW(HKEY_CLASSES_ROOT, inprocPath.c_str());
-    RegDeleteKeyW(HKEY_CLASSES_ROOT, keyPath.c_str());
+
+
 
     return TRUE;
 }

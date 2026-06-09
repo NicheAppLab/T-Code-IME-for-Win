@@ -41,6 +41,16 @@ public:
     HRESULT SetInputMode(InputMode mode);
     InputMode GetInputMode();
     BOOL _IsKeyboardDisabled();
+
+    // Open/Close compartment
+    HRESULT _SetOpenClose(OpenClose state);
+    HRESULT _GetOpenClose(OpenClose& outState);
+
+    // Conversion mode compartment
+    HRESULT _SetConversionMode(InputMode mode);
+    HRESULT _GetConversionMode(InputMode& outMode);
+
+    // Legacy helpers (kept for backward compat)
     HRESULT _GetCompartment(REFGUID rguid, InputMode& outMode);
     HRESULT _SetCompartment(REFGUID rguid, InputMode mode);
 

@@ -2,12 +2,18 @@
 
 #include <string>
 #include <wtypes.h>
+#include <msctf.h>
 
-enum class InputMode {
+// Represents the keyboard open/close state (0 = closed, 1 = open)
+enum class OpenClose {
     Closed = 0,
-    Direct = 1,
-    Tcode = 2,
-    Unknown = -1
+    Open   = 1
+};
+
+// Represents the input conversion mode (maps to TF_CONVERSIONMODE_* values)
+enum class InputMode {
+    Direct = TF_CONVERSIONMODE_ALPHANUMERIC,  // 0x0000
+    Tcode  = TF_CONVERSIONMODE_NATIVE         // 0x0001
 };
 
 struct ComReleaser {
@@ -32,5 +38,3 @@ struct CompartmentMonitor {
 #define IID_IUNK_ARGS(pType) __uuidof(*(pType)), reinterpret_cast<IUnknown *>(pType)
 #define IID_PUNK_ARGS(ppType) __uuidof(**(ppType)), reinterpret_cast<IUnknown **>(ppType)
 
-InputMode CastVariantToInputMode(const VARIANT& var);
-void CastInputModeToVariant(InputMode mode, VARIANT& outVar);

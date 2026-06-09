@@ -5,22 +5,8 @@
 #include <windows.h>
 #include <ctfutb.h>
 #include "Globals.h"
-#include <variant>
 #include "helper.h"
 #include <string>
-
-// Official Microsoft Text Services Framework Language Bar Constants
-#ifndef TF_LBI_STYLE_SHOWNINTRAY
-#define TF_LBI_STYLE_SHOWNINTRAY   0x00000002
-#endif
-#ifndef TF_LBI_STYLE_SHOWINDESC
-#define TF_LBI_STYLE_SHOWINDESC    0x00000010
-#endif
-#ifndef TF_LBI_STYLE_BTN_BUTTON
-#define TF_LBI_STYLE_BTN_BUTTON    0x00000000
-#endif
-
-using InputModeVariant = std::variant<std::monostate, int>;
 
 // Constructor stores owner pointer and adds reference
 CTCodeModeButton::CTCodeModeButton(CTCodeIME* pOwner) : _cRef(1), _pOwner(pOwner), _pSink(nullptr) {
@@ -79,18 +65,13 @@ STDMETHODIMP CTCodeModeButton::GetInfo(TF_LANGBARITEMINFO *pInfo) {
     }
 
     pInfo->clsidService = CLSID_TCodeIME;
-    pInfo->guidItem = GUID_LBI_INPUTMODE; // Required for Windows 10/11 taskbar tray
+    pInfo->guidItem = GUID_LBI_INPUTMODE;
     pInfo->ulSort = 0;
+    // Use TF_LBI_STYLE_BTN_BUTTON (not TOGGLE) — Windows may drop toggle buttons it doesn't recognize
     pInfo->dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY;
 
-    InputMode currentMode = _pOwner->GetInputMode();
-    const wchar_t* pszDescriptionText = L"Direct Mode";
-
-    if (currentMode == InputMode::Tcode) {
-        pszDescriptionText = L"T-Code Mode";
-    }
-
-    wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), pszDescriptionText);
+    // Description should be static - the dynamic text is returned by GetText()
+    wcscpy_s(pInfo->szDescription, ARRAYSIZE(pInfo->szDescription), L"T-Code IME Input Mode");
     return S_OK;
 }
 
@@ -104,7 +85,7 @@ STDMETHODIMP CTCodeModeButton::GetText(BSTR *pbstrText) {
     const wchar_t* pszModeChar = L"A"; // Fallback to Direct alphanumeric mode or Closed
 
     if (currentMode == InputMode::Tcode) {
-        pszModeChar = L"漢"; // Switch to Hanzi/Kanji representation for T-Code mode
+        pszModeChar = L"漢"; // Kanji representation for T-Code mode
     }
 
     *pbstrText = SysAllocString(pszModeChar);
@@ -120,6 +101,9 @@ STDMETHODIMP CTCodeModeButton::GetStatus(DWORD *pdwStatus) {
 }
 
 STDMETHODIMP CTCodeModeButton::Show(BOOL fShow) {
+    // Show() is called BY the language bar to tell us to show/hide.
+    // We just acknowledge it. The language bar will call GetInfo/GetIcon/GetText
+    // as needed after this.
     return S_OK;
 }
 
@@ -146,13 +130,13 @@ STDMETHODIMP CTCodeModeButton::GetIcon(HICON *phIcon) {
     *phIcon = nullptr;
 
     InputMode currentMode = _pOwner->GetInputMode();
-    if (currentMode == InputMode::Tcode) {
-        *phIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON_MODE_TCODE));
-    } else {
-        *phIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON_MODE_DIRECT));
-    }
+    int iconId = (currentMode == InputMode::Tcode) ? IDI_ICON_MODE_TCODE : IDI_ICON_MODE_DIRECT;
+    *phIcon = (HICON)LoadImageW(g_hInst, MAKEINTRESOURCE(iconId), IMAGE_ICON,
+                                GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
 
-    return (*phIcon != nullptr) ? S_OK : S_FALSE;
+    // Return S_OK even if icon loading failed — S_FALSE may cause the system tray to skip this item entirely.
+    // The caller (language bar / system tray) owns the returned icon handle and must destroy it via DestroyIcon.
+    return S_OK;
 }
 
 // ITfLangBarItemButton methods
@@ -195,10 +179,14 @@ STDMETHODIMP CTCodeModeButton::UnadviseSink(DWORD dwCookie) {
     return S_OK;
 }
 
+void CTCodeModeButton::Refresh() {
+    UpdateIcon();
+}
+
 HRESULT CTCodeModeButton::UpdateIcon() {
     if (_pSink == nullptr) {
         return E_FAIL;
     }
-    // Forces the OS to re-call GetText and GetStatus instantly
-    return _pSink->OnUpdate(TF_LBI_TEXT | TF_LBI_STATUS);
+    // Forces the OS to re-call GetIcon, GetText, GetTooltipString and GetStatus
+    return _pSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP | TF_LBI_STATUS);
 }
