@@ -1,5 +1,6 @@
 #include "Registry.h"
 #include "Globals.h"
+#include "resource.h"
 #include <msctf.h>
 #include <string>
 #include <combaseapi.h>
@@ -40,24 +41,45 @@ BOOL RegisterServer() {
     std::wstring inprocPath = keyPath + L"\\InProcServer32";
     WCHAR szModule[MAX_PATH];
     GetModuleFileNameW(g_hInst, szModule, MAX_PATH);
-
     if (!SetKeyAndValue(HKEY_CLASSES_ROOT, inprocPath.c_str(), nullptr, szModule)) return FALSE;
     if (!SetKeyAndValue(HKEY_CLASSES_ROOT, inprocPath.c_str(), L"ThreadingModel", L"Apartment")) return FALSE;
 
-    // 2. TSF Registration
-    ITfInputProcessorProfiles* pProfiles;
-    if (CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_ITfInputProcessorProfiles, (void**)&pProfiles) == S_OK) {
+    // 2. TSF Language Profile Registration
+    ITfInputProcessorProfiles* pProfiles = nullptr;
+    if (CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_ITfInputProcessorProfiles, (void**)&pProfiles) == S_OK && pProfiles) {
         pProfiles->Register(CLSID_TCodeIME);
         
-        // Register as Japanese (0x0411)
-        pProfiles->AddLanguageProfile(CLSID_TCodeIME, 0x0411, GUID_TCODE_PROFILE, IME_DESCRIPTION, (ULONG)wcslen(IME_DESCRIPTION), szModule, (ULONG)wcslen(szModule), 0);
+        // Register as Japanese language layout with icon from our DLL
+        // pchIconFile = szModule (this DLL contains the icon resources)
+        // cchIconFile = wcslen(szModule)
+        // hIcon = -IDI_ICON_MODE_DIRECT (resource ID, negated as required by TSF)
+        pProfiles->AddLanguageProfile(CLSID_TCodeIME, 0x0411, GUID_TCODE_PROFILE, IME_DESCRIPTION, (ULONG)lstrlenW(IME_DESCRIPTION), szModule, (ULONG)wcslen(szModule), -IDI_TCODE_APP_ICON);
         pProfiles->Release();
     }
-
     // 3. Category Registration
-    ITfCategoryMgr* pCategoryMgr;
-    if (CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER, IID_ITfCategoryMgr, (void**)&pCategoryMgr) == S_OK) {
-        pCategoryMgr->RegisterCategory(CLSID_TCodeIME, GUID_TFCAT_TIP_KEYBOARD, CLSID_TCodeIME);
+    ITfCategoryMgr* pCategoryMgr = nullptr;
+    if (CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER, IID_ITfCategoryMgr, (void**)&pCategoryMgr) == S_OK && pCategoryMgr) {
+        // Standard TIP categories (register CLSID_TCodeIME under each)
+        static const GUID c_guidCategory[] = {
+            GUID_TFCAT_TIP_KEYBOARD,
+            GUID_TFCAT_TIPCAP_SECUREMODE,
+            GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+            GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+            GUID_TFCAT_TIPCAP_COMLESS
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory); i++) {
+            pCategoryMgr->RegisterCategory(CLSID_TCodeIME, c_guidCategory[i], CLSID_TCodeIME);
+        }
+
+        // Windows 8 or later categories
+        static const GUID c_guidCategory8[] = {
+            GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+            GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory8); i++) {
+            pCategoryMgr->RegisterCategory(CLSID_TCodeIME, c_guidCategory8[i], CLSID_TCodeIME);
+        }
+
         pCategoryMgr->Release();
     }
 
@@ -65,20 +87,40 @@ BOOL RegisterServer() {
 }
 
 BOOL UnregisterServer() {
-    ITfInputProcessorProfiles* pProfiles;
-    if (CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_ITfInputProcessorProfiles, (void**)&pProfiles) == S_OK) {
+    // Clean up categories on uninstallation
+    ITfCategoryMgr* pCategoryMgr = nullptr;
+    if (CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER, IID_ITfCategoryMgr, (void**)&pCategoryMgr) == S_OK && pCategoryMgr) {
+        static const GUID c_guidCategory[] = {
+            GUID_TFCAT_TIP_KEYBOARD,
+            GUID_TFCAT_TIPCAP_SECUREMODE,
+            GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+            GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+            GUID_TFCAT_TIPCAP_COMLESS
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory); i++) {
+            pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, c_guidCategory[i], CLSID_TCodeIME);
+        }
+
+        static const GUID c_guidCategory8[] = {
+            GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+            GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
+        };
+        for (int i = 0; i < ARRAYSIZE(c_guidCategory8); i++) {
+            pCategoryMgr->UnregisterCategory(CLSID_TCodeIME, c_guidCategory8[i], CLSID_TCodeIME);
+        }
+        pCategoryMgr->Release();
+    }
+
+    ITfInputProcessorProfiles* pProfiles = nullptr;
+    if (CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_ITfInputProcessorProfiles, (void**)&pProfiles) == S_OK && pProfiles) {
         pProfiles->Unregister(CLSID_TCodeIME);
         pProfiles->Release();
     }
 
     std::wstring clsidStr;
     StringFromGUID2W(CLSID_TCodeIME, clsidStr);
-    
-    std::wstring inprocPath = L"CLSID\\" + clsidStr + L"\\InProcServer32";
-    std::wstring keyPath = L"CLSID\\" + clsidStr;
 
-    RegDeleteKeyW(HKEY_CLASSES_ROOT, inprocPath.c_str());
-    RegDeleteKeyW(HKEY_CLASSES_ROOT, keyPath.c_str());
+
 
     return TRUE;
 }

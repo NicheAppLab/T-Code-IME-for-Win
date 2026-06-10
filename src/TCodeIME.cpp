@@ -5,6 +5,7 @@
 // In ActivateEx, replace AddItem call with proper cast
 #include <ctfutb.h>
 #include "resource.h"
+#include "helper.h"
 #ifndef TF_LBI_STYLE_TEXT
 #define TF_LBI_STYLE_TEXT 0x00000002
 #endif
@@ -110,13 +111,13 @@ private:
 };
 
 CTCodeIME::CTCodeIME()
-    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr), _fDirectInputMode(FALSE), _pLangBarItemSink(nullptr), _pModeButton(new CTCodeModeButton(this))
+    : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr)
 {
+    // Attach takes ownership of the initial refcount=1 without adding another reference
+    _pModeButton.Attach(new CTCodeModeButton(this));
     DllAddRef();
     _pIPCClient = new tcode::IPCClient();
 }
-
-#include "CTCodeModeButton.h"
 
 STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
     if (ppvObj == nullptr) return E_INVALIDARG;
@@ -125,24 +126,21 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
         *ppvObj = static_cast<ITfTextInputProcessorEx*>(this);
     } else if (IsEqualIID(riid, IID_ITfKeyEventSink)) {
         *ppvObj = static_cast<ITfKeyEventSink*>(this);
-    } else if (IsEqualIID(riid, IID_ITfSource)) {
-        *ppvObj = static_cast<ITfSource*>(this);
+    } else if (IsEqualIID(riid, IID_ITfCompositionSink)) {
+        *ppvObj = static_cast<ITfCompositionSink*>(this);
+    } else if (IsEqualIID(riid, IID_ITfCompartmentEventSink)) {
+        *ppvObj = static_cast<ITfCompartmentEventSink*>(this);
     }
     if (*ppvObj) { AddRef(); return S_OK; }
+
+    return E_NOINTERFACE;
 }
 
 // Destructor release resources
 CTCodeIME::~CTCodeIME() {
     if (_pIPCClient) delete _pIPCClient;
     if (_pComposition) _pComposition->Release();
-    if (_pModeButton) {
-        _pModeButton->Release();
-        _pModeButton = nullptr;
-    }
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->Release();
-        _pLangBarItemSink = nullptr;
-    }
+    // CComPtr destructors automatically Release() _pModeButton
     DllRelease();
 }
 
@@ -158,45 +156,83 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
     _pThreadMgr = ptim;
     _pThreadMgr->AddRef();
     _tfClientId = tid;
+
+    BOOL fRetKeyMgr = FALSE;
+    BOOL fRetBarItem = FALSE;
     ITfKeystrokeMgr* pKeystrokeMgr;
     if (_pThreadMgr->QueryInterface(IID_ITfKeystrokeMgr, (void**)&pKeystrokeMgr) == S_OK) {
+        fRetKeyMgr = TRUE;
         pKeystrokeMgr->AdviseKeyEventSink(_tfClientId, static_cast<ITfKeyEventSink*>(this), TRUE);
         pKeystrokeMgr->Release();
     }
-    ITfLangBarItemMgr* pLangBarItemMgr;
-    if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
-        pLangBarItemMgr->AddItem(_pModeButton);
-        pLangBarItemMgr->Release();
+    // Recreate buttons if they were released (defensive, e.g. if Deactivate nulled them)
+    if (!_pModeButton) {
+        _pModeButton.Attach(new CTCodeModeButton(this));
     }
-    return S_OK;
-}
-
-// Deactivate: remove mode button from language bar and release resources
-STDMETHODIMP CTCodeIME::Deactivate() {
-    if (_pThreadMgr) {
-        ITfLangBarItemMgr* pLangBarItemMgr;
-        if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) {
-            // Remove the mode button we added during activation
-            if (_pModeButton) {
-                pLangBarItemMgr->RemoveItem(_pModeButton);
-                // Release reference held by language bar (if any)
-                _pModeButton->Release();
-                _pModeButton = nullptr;
+    CComPtr<ITfLangBarItemMgr> pLangBarItemMgr;
+    if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pLangBarItemMgr))) && pLangBarItemMgr) {
+        if (_pModeButton) {
+            // Register the mode button into the Language Bar
+            HRESULT hr = pLangBarItemMgr->AddItem(_pModeButton);
+            if (SUCCEEDED(hr)) {
+                fRetBarItem = TRUE;
             }
-            pLangBarItemMgr->Release();
         }
-        ITfKeystrokeMgr* pKeystrokeMgr;
-        if (_pThreadMgr->QueryInterface(IID_ITfKeystrokeMgr, (void**)&pKeystrokeMgr) == S_OK) {
-            pKeystrokeMgr->UnadviseKeyEventSink(_tfClientId);
-            pKeystrokeMgr->Release();
-        }
-        _pThreadMgr->Release();
-        _pThreadMgr = nullptr;
     }
-    _tfClientId = TF_CLIENTID_NULL;
-    return S_OK;
+
+    // Initialize compartment event sinks to track open/close and conversion mode changes
+    _InitCompartmentEventSink();
+
+    SetInputMode(InputMode::Direct);
+
+    // Return S_OK as long as the keystroke sink was installed successfully.
+    // Language bar items are optional UI and should not block activation.
+    return fRetKeyMgr ? S_OK : E_FAIL;
 }
 
+// Deactivate: remove mode button and brand button from language bar and release resources
+STDMETHODIMP CTCodeIME::Deactivate() { 
+    if (_pThreadMgr) { 
+        // Unadvise compartment event sinks
+        _UninitCompartmentEventSink();
+
+        CComPtr<ITfLangBarItemMgr> pLangBarItemMgr; 
+        if (_pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr) == S_OK) { 
+            // Remove the mode button from language bar (but keep the object alive via CComPtr)
+            if (_pModeButton) { 
+                pLangBarItemMgr->RemoveItem(_pModeButton); 
+            } 
+        } 
+
+        // Release buttons so they get recreated fresh in ActivateEx.
+        // Keeping old button objects across deactivate/reactivate cycles can cause
+        // the language bar to fail re-registration because _pSink may still be set.
+        _pModeButton = nullptr;
+
+        ITfKeystrokeMgr* pKeystrokeMgr; 
+        if (_pThreadMgr->QueryInterface(IID_ITfKeystrokeMgr, (void**)&pKeystrokeMgr) == S_OK) { 
+            pKeystrokeMgr->UnadviseKeyEventSink(_tfClientId); 
+            pKeystrokeMgr->Release(); 
+        } 
+        _pThreadMgr->Release(); 
+        _pThreadMgr = nullptr; 
+    } 
+    _tfClientId = TF_CLIENTID_NULL; 
+    return S_OK; 
+}
+void CTCodeIME::_KeyboardOpenCloseChanged() {
+    // When the open/close state changes, update the mode button
+    if (_pModeButton) {
+        _pModeButton->UpdateIcon();
+    }
+}
+
+void CTCodeIME::_KeyboardInputConversionChanged() {
+    // When the conversion mode changes, update the mode button
+    if (_pModeButton) {
+        _pModeButton->UpdateIcon();
+    }
+}
 
 STDMETHODIMP CTCodeIME::OnSetFocus(BOOL fForeground) { return S_OK; }
 
@@ -214,21 +250,21 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
     bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
     bool isCtrlSlash = isCtrl && !isAlt && !isWin && (wParam == VK_OEM_2);
 
-    if (_fDirectInputMode) {
-        if (isCtrlSlash) {
-            *pfEaten = TRUE;
-            return S_OK;
-        }
-        *pfEaten = FALSE;
-        return S_OK;
-    }
-
+    // Ctrl+/ always toggles mode regardless of current state
     if (isCtrlSlash) {
         *pfEaten = TRUE;
         return S_OK;
     }
 
-    // Do not capture other Windows shortcuts with modifier keys (Ctrl/Alt/Win)
+    InputMode inputmode = GetInputMode();
+
+    // In Direct mode, only eat Ctrl+/
+    if (inputmode == InputMode::Direct) {
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
+    // In Tcode mode, don't capture modifier keys
     if (isCtrl || isAlt || isWin) {
         *pfEaten = FALSE;
         return S_OK;
@@ -241,26 +277,40 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
         *pfEaten = TRUE; return S_OK; 
     }
     
-    if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN) {
+    if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_RETURN || wParam == VK_BACK) {
         *pfEaten = TRUE; return S_OK;
     }
     *pfEaten = FALSE;
     return S_OK;
 }
+STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
 
-STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) {
     bool isCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     bool isAlt = (GetKeyState(VK_MENU) & 0x8000) != 0;
     bool isWin = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
     bool isCtrlSlash = isCtrl && !isAlt && !isWin && (wParam == VK_OEM_2);
 
+    // Read the current state of the engine before executing changes
+    InputMode currentMode = GetInputMode();
+
     if (isCtrlSlash) {
-        _fDirectInputMode = !_fDirectInputMode;
-        if (_pLangBarItemSink) {
-            _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
+        *pfEaten = TRUE;
+
+        // FIX 1: Compute the explicit target mode beforehand to avoid racing else-if blocks
+        InputMode targetMode = (currentMode == InputMode::Tcode) ? InputMode::Direct : InputMode::Tcode;
+        
+        // Execute the single synchronized atomic change
+        SetInputMode(targetMode);
+
+        if (_pModeButton) {
+            // Proactively invoke the Language Bar UI update
+            _pModeButton->UpdateIcon();
         }
-        if (_fDirectInputMode) {
-            // Cancel composition when switching to direct input mode
+
+        // FIX 2: Check targetMode instead of currentMode to correctly handle Direct Input entry
+        if (targetMode == InputMode::Direct) {
+            // Cancel active composition when switching back to direct layout
             if (_pComposition) {
                 CManageCompositionEditSession* pEditSession = new CManageCompositionEditSession(this, pic, L"", L"");
                 HRESULT hr;
@@ -269,17 +319,19 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
             }
             _pIPCClient->Reset();
         }
-        *pfEaten = TRUE;
+
         return S_OK;
     }
 
-    if (_fDirectInputMode) {
+    // Use currentMode for structural processing throughout the remainder of the loop
+    if (currentMode == InputMode::Direct) {
         *pfEaten = FALSE;
         return S_OK;
     }
 
     if (wParam == VK_SHIFT || wParam == VK_CONTROL || wParam == VK_MENU || wParam == VK_LWIN || wParam == VK_RWIN) {
-        *pfEaten = FALSE; return S_OK;
+        *pfEaten = FALSE;
+        return S_OK;
     }
 
     // Do not capture other Windows shortcuts with modifier keys (Ctrl/Alt/Win)
@@ -287,7 +339,7 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
         *pfEaten = FALSE;
         return S_OK;
     }
-    
+
     std::wstring committed, composition;
     bool isActive = false;
     bool inputConsumed = _pIPCClient->SendInput((uint32_t)wParam, committed, composition, &isActive);
@@ -309,45 +361,43 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
     } else {
         *pfEaten = FALSE;
     }
+
     return S_OK;
 }
 
-STDMETHODIMP CTCodeIME::OnTestKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
-STDMETHODIMP CTCodeIME::OnKeyUp(ITfContext *pic, WPARAM wParam, LPARAM lParam, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
-STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext *pic, REFGUID rguid, BOOL *pfEaten) { *pfEaten = FALSE; return S_OK; }
-
-// Removed old ITfLangBarItemButton methods from CTCodeIME; functionality now provided by CTCodeModeButton.
-
-// ITfSource methods
-STDMETHODIMP CTCodeIME::AdviseSink(REFIID riid, IUnknown *pUnk, DWORD *pdwCookie) {
-    if (!IsEqualIID(riid, IID_ITfLangBarItemSink)) return E_NOINTERFACE;
-    if (_pLangBarItemSink != nullptr) return E_FAIL;
-    if (pUnk->QueryInterface(IID_ITfLangBarItemSink, (void**)&_pLangBarItemSink) != S_OK) {
-        return E_NOINTERFACE;
-    }
-    *pdwCookie = 1;
+STDMETHODIMP CTCodeIME::OnTestKeyUp(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
     return S_OK;
 }
 
-// Helper methods for Direct Input mode
-BOOL CTCodeIME::IsDirectInputMode() const {
-    return _fDirectInputMode;
-}
-
-void CTCodeIME::ToggleDirectInputMode() {
-    _fDirectInputMode = !_fDirectInputMode;
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT);
-    }
-}
-
-
-
-STDMETHODIMP CTCodeIME::UnadviseSink(DWORD dwCookie) {
-    if (dwCookie != 1) return E_INVALIDARG;
-    if (_pLangBarItemSink) {
-        _pLangBarItemSink->Release();
-        _pLangBarItemSink = nullptr;
-    }
+STDMETHODIMP CTCodeIME::OnKeyUp(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
     return S_OK;
+}
+
+STDMETHODIMP CTCodeIME::OnPreservedKey(ITfContext* pic, REFGUID rguid, BOOL* pfEaten) {
+    if (!pfEaten) return E_INVALIDARG;
+    *pfEaten = FALSE;
+    return S_OK;
+}
+
+// IsDirectInputMode: return the current input mode
+BOOL CTCodeIME::IsDirectInputMode() {
+    InputMode im = GetInputMode();
+    return (im == InputMode::Direct);
+}
+
+// ToggleInputMode: toggle the input mode and update the button
+void CTCodeIME::ToggleInputMode() {
+    InputMode im = GetInputMode();
+    if (im == InputMode::Tcode) {
+        SetInputMode(InputMode::Direct);
+    } else {
+        SetInputMode(InputMode::Tcode);
+    }
+    if (_pModeButton) {
+        _pModeButton->UpdateIcon();
+    }
 }

@@ -25,6 +25,8 @@ set(IME_SRC_FILES
     src/TCodeIME.cpp
     src/dllmain.cpp
     src/ClassFactory.cpp
+    src/Compartment.cpp
+    src/CompartmentEventSink.cpp
     src/CTCodeModeButton.cpp
     src/Globals.cpp
     src/IPCClient.cpp
@@ -74,10 +76,6 @@ add_custom_target(TCodeProxy ALL
 # TCodeInstaller (Inno Setup Installer)
 # -----------------------------------------------------------------------------
 option(BUILD_INSTALLER "Build the Inno Setup installer package" ON)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"
-    @ONLY
-)
 if(BUILD_INSTALLER)
     find_program(ISCC_EXECUTABLE ISCC
         PATHS
@@ -95,6 +93,7 @@ if(BUILD_INSTALLER)
     else()
         add_custom_target(TCodeInstaller
             COMMAND ${ISCC_EXECUTABLE}
+                "/DMyAppVersion=${PROJECT_VERSION}"
                 "/DConfig=$<CONFIG>"
                 "/DTCodeIMEDllPath=$<TARGET_FILE:TCodeIME>"
                 "/DTCodeProxyBinDir=${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/bin/$<CONFIG>/net10.0-windows"

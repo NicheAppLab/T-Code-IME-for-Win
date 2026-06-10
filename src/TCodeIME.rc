@@ -1,7 +1,6 @@
 #include "windows.h"
+#include "resource.h"
 
-#define IDI_ICON_TCODE   101
-#define IDI_ICON_DIRECT  102
-
-IDI_ICON_TCODE ICON "../icons/icon.ico"
-IDI_ICON_DIRECT ICON "../icons/disable_icon.ico"
+IDI_TCODE_APP_ICON ICON "../icons/icon.ico"
+IDI_ICON_MODE_TCODE ICON "../icons/Ah.ico"
+IDI_ICON_MODE_DIRECT ICON "../icons/A.ico"

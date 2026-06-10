@@ -2,9 +2,13 @@
 #define MyAppPublisher "Niche App Lab"
 #define SourcePath ".."
 
+#ifndef MyAppVersion
+#define MyAppVersion "0.1.1.0"
+#endif
+
 [Setup]
 AppName={#MyAppName}
-AppVersion=@PROJECT_VERSION@
+AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}

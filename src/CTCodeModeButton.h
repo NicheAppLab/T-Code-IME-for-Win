@@ -4,9 +4,9 @@
 #include <msctf.h>
 
 class CTCodeIME; // forward declaration of owning IME
-
-class CTCodeModeButton : public ITfLangBarItemButton,
-                         public ITfSource {
+enum class InputMode; // forward declaration of input mode enum
+class CTCodeModeButton : public ITfLangBarItemButton, 
+public ITfSource {
 public:
     explicit CTCodeModeButton(CTCodeIME* pOwner);
     ~CTCodeModeButton();
@@ -17,10 +17,10 @@ public:
     STDMETHODIMP_(ULONG) Release();
 
     // ITfLangBarItem methods
-    STDMETHODIMP GetInfo(TF_LANGBARITEMINFO* pInfo);
-    STDMETHODIMP GetStatus(DWORD* pdwStatus);
-    STDMETHODIMP Show(BOOL fShow);
-    STDMETHODIMP GetTooltipString(BSTR* pbstrToolTip);
+    STDMETHODIMP GetInfo(TF_LANGBARITEMINFO* pInfo) override;
+    STDMETHODIMP GetStatus(DWORD* pdwStatus) override;
+    STDMETHODIMP Show(BOOL fShow) override;
+    STDMETHODIMP GetTooltipString(BSTR* pbstrToolTip) override;
     STDMETHODIMP GetIcon(HICON* phIcon);
     STDMETHODIMP GetText(BSTR* pbstrText);
 
@@ -34,7 +34,7 @@ public:
     STDMETHODIMP UnadviseSink(DWORD dwCookie);
 
     void Refresh();
-
+    HRESULT UpdateIcon();
 private:
     LONG _cRef;
     CTCodeIME* _pOwner; // not owned
