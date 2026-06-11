@@ -88,15 +88,37 @@ Windows will automatically select the correct architecture at install time.
 
 ## Build Targets Reference
 
-| CMake Target            | Description                                    |
-|-------------------------|------------------------------------------------|
-| `TCodeIME`              | Native C++ TSF DLL                             |
-| `TCodeProxy`            | C# Proxy host (built automatically)            |
-| `BuildMsix`             | Per-architecture MSIX package                  |
-| `BuildInnoInstaller`    | Traditional Inno Setup installer               |
-| `BuildMsixBundle`       | Multi-architecture MSIX bundle                 |
+| CMake Target                | Description                                    |
+|-----------------------------|------------------------------------------------|
+| `TCodeIME`                  | Native C++ TSF DLL                             |
+| `TCodeProxy`                | C# Proxy host (built automatically)            |
+| `BuildMsix`                 | Per-architecture MSIX package                  |
+| `BuildInnoInstaller`        | Traditional Inno Setup installer               |
+| `BuildMsixBundle`           | Multi-architecture MSIX bundle                 |
+| `GenerateWingetManifests`   | Generate winget-pkgs manifest YAML files       |
 
 The `artifacts-*` build presets combine `BuildInnoInstaller` + `BuildMsix`. The `bundle-msix` preset runs `BuildMsixBundle`.
+
+---
+
+## Winget Package Manifests
+
+After building all three architectures, generate the winget-pkgs manifest files. The SHA256 is auto-calculated from the built installer files.
+
+```powershell
+# 1. Build all architectures
+cmake --build --preset artifacts-x64
+cmake --build --preset artifacts-win32
+cmake --build --preset artifacts-arm64
+
+# 2. Generate winget manifests (SHA256 computed automatically)
+cmake --build build/x64 --preset winget
+
+# 3. Upload installers to GitHub release
+# 4. Commit generated manifests to winget-pkgs repository
+```
+
+Output: `winget/manifests/n/NicheAppLab/T-CodeIME/<version>/*.yaml`
 
 ---
 

@@ -12,7 +12,15 @@
     },
     { "name": "win32", "inherits": "base-windows", "architecture": "Win32", "binaryDir": "${sourceDir}/build/win32" },
     { "name": "x64",   "inherits": "base-windows", "architecture": "x64",   "binaryDir": "${sourceDir}/build/x64" },
-    { "name": "arm64", "inherits": "base-windows", "architecture": "ARM64", "binaryDir": "${sourceDir}/build/arm64" }
+    {
+      "name": "arm64",
+      "inherits": "base-windows",
+      "architecture": "ARM64",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "/Qspectre /EHsc"
+      },
+      "binaryDir": "${sourceDir}/build/arm64"
+    }
   ],
   "buildPresets": [
     {
@@ -43,6 +51,12 @@
       "inherits": "base-build",
       "configurePreset": "x64",
       "targets": ["BuildMsixBundle"]
+    },
+    {
+      "name": "winget",
+      "inherits": "base-build",
+      "configurePreset": "x64",
+      "targets": ["GenerateWingetManifests"]
     }
   ]
 }

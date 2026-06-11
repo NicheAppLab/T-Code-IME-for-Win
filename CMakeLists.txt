@@ -194,12 +194,14 @@ if(BUILD_MSIX)
         set(CERTIFICATE_PASSWORD "" CACHE STRING "Password for certificate (optional)")
 
         if(SIGN_MSIX AND SIGNTOOL_EXECUTABLE AND CERTIFICATE_PATH AND NOT CERTIFICATE_PATH STREQUAL "")
+            # Resolve certificate path to absolute (in case it's relative to source dir)
+            get_filename_component(CERT_ABSOLUTE_PATH "${CERTIFICATE_PATH}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
             # Build and sign MSIX with existing certificate
             if(CERTIFICATE_PASSWORD AND NOT CERTIFICATE_PASSWORD STREQUAL "")
                 add_custom_target(BuildMsix
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
                     COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
-                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /p "${CERTIFICATE_PASSWORD}" /fd SHA256 "${MSIX_OUTPUT}"
+                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERT_ABSOLUTE_PATH}" /p "${CERTIFICATE_PASSWORD}" /fd SHA256 "${MSIX_OUTPUT}"
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
                     COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
                 )
@@ -207,7 +209,7 @@ if(BUILD_MSIX)
                 add_custom_target(BuildMsix
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
                     COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
-                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
+                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERT_ABSOLUTE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
                     COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
                 )
@@ -263,6 +265,100 @@ if(BUILD_MSIX_BUNDLE)
             COMMENT "Building multi-architecture MSIX bundle: TCodeIME-${PROJECT_VERSION}.msixbundle"
         )
     endif()
+endif()
+
+# -----------------------------------------------------------------------------
+# GenerateWingetManifests - generate winget-pkgs manifest YAML files from templates
+# -----------------------------------------------------------------------------
+# This generates winget-pkgs manifest YAML files at configure time by reading
+# .in templates and substituting @PLACEHOLDERS@. SHA256 is auto-calculated
+# from the built installer files in installer/output/.
+#
+# The installer URL is auto-generated from PROJECT_VERSION and architecture:
+#   https://github.com/NicheAppLab/T-Code-IME-for-Win/releases/download/{version}/
+#   NicheAppLab.TCodeIME_{version}_{arch}.exe
+#
+# All three architectures (x86, x64, arm64) are included in a single manifest.
+#
+# Workflow:
+#   1. Build all three architectures:
+#      cmake --build --preset artifacts-x64
+#      cmake --build --preset artifacts-win32
+#      cmake --build --preset artifacts-arm64
+#   2. cmake --build build/x64 --target GenerateWingetManifests
+#      (re-runs cmake configure to regenerate manifests)
+#   3. Upload artifacts to GitHub release
+#   4. Commit generated manifests to winget-pkgs repository
+# -----------------------------------------------------------------------------
+option(BUILD_WINGET_MANIFESTS "Build the winget-pkgs manifest files" ON)
+
+if(BUILD_WINGET_MANIFESTS)
+    set(WINGET_VERSION_DIR "${CMAKE_CURRENT_SOURCE_DIR}/winget/manifests/n/NicheAppLab/T-CodeIME/${PROJECT_VERSION}")
+    set(WINGET_INSTALLER_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/installer/output")
+
+    # Compute SHA256 for each architecture installer
+    set(WINGET_SHA256_X86 "")
+    set(WINGET_SHA256_X64 "")
+    set(WINGET_SHA256_ARM64 "")
+
+    set(INSTALLER_X86 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_x86.exe")
+    set(INSTALLER_X64 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_x64.exe")
+    set(INSTALLER_ARM64 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_arm64.exe")
+
+    if(EXISTS "${INSTALLER_X86}")
+        file(SHA256 "${INSTALLER_X86}" WINGET_SHA256_X86)
+        string(TOUPPER "${WINGET_SHA256_X86}" WINGET_SHA256_X86)
+        message(STATUS "Winget SHA256(x86) = ${WINGET_SHA256_X86}")
+    else()
+        message(STATUS "Winget: x86 installer not found at ${INSTALLER_X86} — SHA256 will be empty")
+    endif()
+
+    if(EXISTS "${INSTALLER_X64}")
+        file(SHA256 "${INSTALLER_X64}" WINGET_SHA256_X64)
+        string(TOUPPER "${WINGET_SHA256_X64}" WINGET_SHA256_X64)
+        message(STATUS "Winget SHA256(x64) = ${WINGET_SHA256_X64}")
+    else()
+        message(STATUS "Winget: x64 installer not found at ${INSTALLER_X64} — SHA256 will be empty")
+    endif()
+
+    if(EXISTS "${INSTALLER_ARM64}")
+        file(SHA256 "${INSTALLER_ARM64}" WINGET_SHA256_ARM64)
+        string(TOUPPER "${WINGET_SHA256_ARM64}" WINGET_SHA256_ARM64)
+        message(STATUS "Winget SHA256(arm64) = ${WINGET_SHA256_ARM64}")
+    else()
+        message(STATUS "Winget: arm64 installer not found at ${INSTALLER_ARM64} — SHA256 will be empty")
+    endif()
+
+    # Generate each manifest from its template
+    set(WINGET_TEMPLATES
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.installer.yaml.in"
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.locale.ja-JP.yaml.in"
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.yaml.in"
+    )
+    set(WINGET_OUTPUTS
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.installer.yaml"
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.locale.ja-JP.yaml"
+        "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.yaml"
+    )
+
+    foreach(idx RANGE 2)
+        list(GET WINGET_TEMPLATES ${idx} TEMPLATE_FILE)
+        list(GET WINGET_OUTPUTS ${idx} OUTPUT_FILE)
+        file(READ "${TEMPLATE_FILE}" CONTENT)
+        string(REPLACE "@PROJECT_VERSION@" "${PROJECT_VERSION}" CONTENT "${CONTENT}")
+        string(REPLACE "@WINGET_SHA256_X86@" "${WINGET_SHA256_X86}" CONTENT "${CONTENT}")
+        string(REPLACE "@WINGET_SHA256_X64@" "${WINGET_SHA256_X64}" CONTENT "${CONTENT}")
+        string(REPLACE "@WINGET_SHA256_ARM64@" "${WINGET_SHA256_ARM64}" CONTENT "${CONTENT}")
+        file(WRITE "${OUTPUT_FILE}" "${CONTENT}")
+        message(STATUS "Generated winget manifest: ${OUTPUT_FILE}")
+    endforeach()
+
+    # Custom target that re-runs cmake configure to regenerate manifests
+    add_custom_target(GenerateWingetManifests
+        COMMAND ${CMAKE_COMMAND} "${CMAKE_CURRENT_SOURCE_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        COMMENT "Re-running cmake configure to regenerate winget-pkgs manifest files"
+    )
 endif()
 
 # Clean up build artifacts
