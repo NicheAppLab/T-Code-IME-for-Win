@@ -17,7 +17,8 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26200.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26200.0" ProcessorArchitecture="@TCODE_ARCH_MSIX@" />
+    <PackageDependency Name="Microsoft.VCLibs.Desktop.14" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" MinVersion="14.0.33728.0" />
   </Dependencies>
 
   <Resources>

@@ -34,7 +34,7 @@ message(STATUS "Target architecture: ${TCODE_ARCH} (CMAKE_GENERATOR_PLATFORM=${C
 
 # Set package identity and publisher for MSIX
 set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
-set(PUBLISHER_DN "CN=NicheAppLab")
+set(PUBLISHER_DN "CN=2BF2953C-66FF-4938-ACE4-42FB3950D28C")
 set(DISPLAY_NAME "T-Code IME")
 set(PUBLISHER_DISPLAY_NAME "Niche App Lab")
 set(CMAKE_CXX_STANDARD 17)
@@ -190,18 +190,28 @@ if(BUILD_MSIX)
         set(LAYOUT_DIR "layout")
         set(OUTPUT_DIR "output")
         option(SIGN_MSIX "Sign MSIX with certificate" OFF)
-        option(CERTIFICATE_PATH "Path to certificate file (.pfx)" "")
-        option(CERTIFICATE_PASSWORD "Password for certificate (optional)" "")
+        set(CERTIFICATE_PATH "" CACHE STRING "Path to certificate file (.pfx)")
+        set(CERTIFICATE_PASSWORD "" CACHE STRING "Password for certificate (optional)")
 
         if(SIGN_MSIX AND SIGNTOOL_EXECUTABLE AND CERTIFICATE_PATH AND NOT CERTIFICATE_PATH STREQUAL "")
             # Build and sign MSIX with existing certificate
-            add_custom_target(BuildMsix
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
-                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
-                COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
-                COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
-            )
+            if(CERTIFICATE_PASSWORD AND NOT CERTIFICATE_PASSWORD STREQUAL "")
+                add_custom_target(BuildMsix
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                    COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
+                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /p "${CERTIFICATE_PASSWORD}" /fd SHA256 "${MSIX_OUTPUT}"
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+                    COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
+                )
+            else()
+                add_custom_target(BuildMsix
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                    COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
+                    COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+                    COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
+                )
+            endif()
         else()
             # Build MSIX without signing using winapp CLI
             add_custom_target(BuildMsix
