@@ -469,7 +469,7 @@ class Program
                     }
 
                     string lastKeyChar = resp?.LastCharAsKey ?? "";
-                    if (lastKeyChar is not null && lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
+                    if (lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
                     else if (lastKeyChar == "None") lastKeyChar = "";
 
                     composition = respBuffer + (string.IsNullOrEmpty(lastKeyChar) ? "" : $"({lastKeyChar})");

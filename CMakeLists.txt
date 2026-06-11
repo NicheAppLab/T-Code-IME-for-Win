@@ -88,6 +88,7 @@ set_target_properties(TCodeIME PROPERTIES
     LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/TCodeIME.def"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 
 # -----------------------------------------------------------------------------
@@ -252,13 +253,14 @@ if(BUILD_MSIX_BUNDLE)
         # Mapping file for makeappx bundle
         set(MSIX_BUNDLE_MAPPING "${CMAKE_CURRENT_BINARY_DIR}/msixbundle_mapping.txt")
 
-        # Generate the mapping file at build time
+        # Generate the mapping file at configure time
+        file(WRITE "${MSIX_BUNDLE_MAPPING}" "[Files]\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-x86.msix\" \"TCodeIME-x86.msix\"\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-x64.msix\" \"TCodeIME-x64.msix\"\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-arm64.msix\" \"TCodeIME-arm64.msix\"\n")
+
         add_custom_target(BuildMsixBundle
             COMMAND ${CMAKE_COMMAND} -E make_directory "${MSIX_OUTPUT_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E echo "[Files]" > "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x86.msix\" \"TCodeIME-x86.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x64.msix\" \"TCodeIME-x64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-arm64.msix\" \"TCodeIME-arm64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
             COMMAND ${WINAPP_EXECUTABLE} tool -- makeappx bundle /v /o /bv "${PROJECT_VERSION}" /f "${MSIX_BUNDLE_MAPPING}" /p "${MSIX_BUNDLE_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E remove "${MSIX_BUNDLE_MAPPING}"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
