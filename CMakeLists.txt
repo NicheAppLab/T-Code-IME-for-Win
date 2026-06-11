@@ -1,7 +1,7 @@
 # CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.20)
-project(TCodeIMEForWin VERSION 0.1.1.0 LANGUAGES CXX)
+project(TCodeIMEForWin VERSION 0.2.0.0 LANGUAGES CXX)
 
 # -----------------------------------------------------------------------------
 # Architecture support: x64 (64-bit), Win32 (32-bit x86), or ARM64
