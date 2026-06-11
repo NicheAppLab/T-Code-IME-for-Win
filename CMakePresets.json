@@ -1,0 +1,48 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base-windows",
+      "description": "Abstract base setting for the MSVC Toolchain",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    { "name": "win32", "inherits": "base-windows", "architecture": "Win32", "binaryDir": "${sourceDir}/build/win32" },
+    { "name": "x64",   "inherits": "base-windows", "architecture": "x64",   "binaryDir": "${sourceDir}/build/x64" },
+    { "name": "arm64", "inherits": "base-windows", "architecture": "ARM64", "binaryDir": "${sourceDir}/build/arm64" }
+  ],
+  "buildPresets": [
+    {
+      "name": "base-build",
+      "hidden": true,
+      "configuration": "Release"
+    },
+    {
+      "name": "artifacts-win32",
+      "inherits": "base-build",
+      "configurePreset": "win32",
+      "targets": ["BuildInnoInstaller", "BuildMsix"]
+    },
+    {
+      "name": "artifacts-x64",
+      "inherits": "base-build",
+      "configurePreset": "x64",
+      "targets": ["BuildInnoInstaller", "BuildMsix"]
+    },
+    {
+      "name": "artifacts-arm64",
+      "inherits": "base-build",
+      "configurePreset": "arm64",
+      "targets": ["BuildInnoInstaller", "BuildMsix"]
+    },
+    {
+      "name": "bundle-msix",
+      "inherits": "base-build",
+      "configurePreset": "x64",
+      "targets": ["BuildMsixBundle"]
+    }
+  ]
+}

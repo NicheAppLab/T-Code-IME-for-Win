@@ -3,6 +3,35 @@
 cmake_minimum_required(VERSION 3.20)
 project(TCodeIMEForWin VERSION 0.1.1.0 LANGUAGES CXX)
 
+# -----------------------------------------------------------------------------
+# Architecture support: x64 (64-bit), Win32 (32-bit x86), or ARM64
+# -----------------------------------------------------------------------------
+# Usage (via CMakePresets.json):
+#   cmake --preset x64                  # 64-bit
+#   cmake --preset win32                # 32-bit
+#   cmake --preset arm64                # ARM64
+#
+# Or manually:
+#   cmake -B build/x64   -A x64   -S .
+#   cmake -B build/win32 -A Win32 -S .
+#   cmake -B build/arm64 -A ARM64 -S .
+#
+# The generator platform is set via -A on the cmake command line.
+# We derive a short arch tag for output directories and installer use.
+if(CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
+    set(TCODE_ARCH "x86")
+    set(TCODE_ARCH_MSIX "x86")
+elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+    set(TCODE_ARCH "arm64")
+    set(TCODE_ARCH_MSIX "arm64")
+else()
+    # Default to x64 if not specified or if platform is empty
+    set(TCODE_ARCH "x64")
+    set(TCODE_ARCH_MSIX "x64")
+endif()
+
+message(STATUS "Target architecture: ${TCODE_ARCH} (CMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM})")
+
 # Set package identity and publisher for MSIX
 set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
 set(PUBLISHER_DN "CN=NicheAppLab")
@@ -10,10 +39,6 @@ set(DISPLAY_NAME "T-Code IME")
 set(PUBLISHER_DISPLAY_NAME "Niche App Lab")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ... (rest of file unchanged) ...
-# Removed duplicate TCodeMSIX target
 
 # Avoid building tests or examples for dependencies if any leak through
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -59,7 +84,11 @@ target_link_libraries(TCodeIME PRIVATE
 )
 
 target_compile_definitions(TCodeIME PRIVATE UNICODE _UNICODE)
-set_target_properties(TCodeIME PROPERTIES LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/TCodeIME.def")
+set_target_properties(TCodeIME PROPERTIES
+    LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/TCodeIME.def"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
+)
 
 # -----------------------------------------------------------------------------
 # TCodeProxy (C# Project)
@@ -67,9 +96,9 @@ set_target_properties(TCodeIME PROPERTIES LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURC
 find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
 
 add_custom_target(TCodeProxy ALL
-    COMMAND ${DOTNET_EXECUTABLE} build "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj" --configuration $<CONFIG>
+    COMMAND ${DOTNET_EXECUTABLE} build "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj" --configuration $<CONFIG> --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy"
-    COMMENT "Building C# TCodeProxy with dotnet build ($<CONFIG>)"
+    COMMENT "Building C# TCodeProxy with dotnet build ($<CONFIG>) for ${TCODE_ARCH}"
 )
 
 # -----------------------------------------------------------------------------
@@ -91,52 +120,54 @@ if(BUILD_INSTALLER)
     if(NOT ISCC_EXECUTABLE)
         message(WARNING "ISCC.exe (Inno Setup) not found. The 'TCodeInstaller' target will not be available.")
     else()
-        add_custom_target(TCodeInstaller
+        add_custom_target(BuildInnoInstaller
             COMMAND ${ISCC_EXECUTABLE}
                 "/DMyAppVersion=${PROJECT_VERSION}"
                 "/DConfig=$<CONFIG>"
-                "/DTCodeIMEDllPath=$<TARGET_FILE:TCodeIME>"
-                "/DTCodeProxyBinDir=${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/bin/$<CONFIG>/net10.0-windows"
+                "/DTCodeArch=${TCODE_ARCH}"
+                "/DTCodeIMEDllPath=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/$<CONFIG>/TCodeIME.dll"
+                "/DTCodeProxyBinDir=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
                 "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/installer"
             DEPENDS TCodeIME TCodeProxy
-            COMMENT "Building Inno Setup installer package ($<CONFIG>)"
+            COMMENT "Building Inno Setup installer package ($<CONFIG>) for ${TCODE_ARCH}"
         )
     endif()
 endif()
 
 # -----------------------------------------------------------------------------
-# TCodeMSIX (Winapp CLI MSIX Package) - すべてをCMake側で処理
+# TCodeMSIX (Winapp CLI MSIX Package) - per-architecture MSIX
 # -----------------------------------------------------------------------------
 option(BUILD_MSIX "Build the modern MSIX package using winapp CLI" ON)
 
 if(BUILD_MSIX)
-    # 1. 4部構成の厳密なMSIXバージョン文字列を作成 (例: 0.1.1.0)
-    set(MSIX_VERSION "${PROJECT_VERSION}")
-    
-    # 2. Read the template and generate the manifest with proper substitution
+    # 1. Read the template and generate the manifest with proper substitution
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Package.appxmanifest.in" MANIFEST_TEMPLATE)
     
-    # 3. Create resource entries (each on a new line)
+    # 2. Create resource entries (each on a new line)
     set(RESOURCES_XML "")
     set(IME_RESOURCES en-us ja-jp)
     foreach(lang ${IME_RESOURCES})
         string(APPEND RESOURCES_XML "    <Resource Language=\"${lang}\" />\n")
     endforeach()
     
-    # 4. Perform variable substitution
+    # 3. Perform variable substitution (architecture placeholder too)
     string(REPLACE "@PACKAGE_NAME@" "${PACKAGE_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     string(REPLACE "@PUBLISHER_DN@" "${PUBLISHER_DN}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     string(REPLACE "@PROJECT_VERSION@" "${PROJECT_VERSION}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     string(REPLACE "@DISPLAY_NAME@" "${DISPLAY_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     string(REPLACE "@PUBLISHER_DISPLAY_NAME@" "${PUBLISHER_DISPLAY_NAME}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     string(REPLACE "@RESOURCES_XML@" "${RESOURCES_XML}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
+    string(REPLACE "@TCODE_ARCH_MSIX@" "${TCODE_ARCH_MSIX}" MANIFEST_TEMPLATE "${MANIFEST_TEMPLATE}")
     
-    # 5. Write the manifest and copy to layout directory
+    # 4. Write the manifest and copy to layout directory
     set(MANIFEST_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Package.appxmanifest")
     set(MANIFEST_LAYOUT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/layout/AppxManifest.xml")
     file(WRITE "${MANIFEST_SOURCE}" "${MANIFEST_TEMPLATE}")
     configure_file("${MANIFEST_SOURCE}" "${MANIFEST_LAYOUT}" COPYONLY)
+
+    # 5. Architecture-aware MSIX output path
+    set(MSIX_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/output/TCodeIME-${TCODE_ARCH}.msix")
 
     # 6. Find winapp CLI and SignTool
     find_program(WINAPP_EXECUTABLE winapp REQUIRED)
@@ -158,29 +189,69 @@ if(BUILD_MSIX)
     else()
         set(LAYOUT_DIR "layout")
         set(OUTPUT_DIR "output")
-        set(MSIX_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/output/TCodeIME.msix")
         option(SIGN_MSIX "Sign MSIX with certificate" OFF)
         option(CERTIFICATE_PATH "Path to certificate file (.pfx)" "")
         option(CERTIFICATE_PASSWORD "Password for certificate (optional)" "")
 
         if(SIGN_MSIX AND SIGNTOOL_EXECUTABLE AND CERTIFICATE_PATH AND NOT CERTIFICATE_PATH STREQUAL "")
             # Build and sign MSIX with existing certificate
-            add_custom_target(TCodeMSIX
+            add_custom_target(BuildMsix
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
-                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME.msix" -v
+                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
                 COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERTIFICATE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
-                COMMENT "Building and signing MSIX package with winapp ($<CONFIG>)"
+                COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
             )
         else()
             # Build MSIX without signing using winapp CLI
-            add_custom_target(TCodeMSIX
+            add_custom_target(BuildMsix
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
-                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME.msix" -v
+                COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
-                COMMENT "Building MSIX package using winapp CLI ($<CONFIG>)"
+                COMMENT "Building MSIX package using winapp CLI ($<CONFIG>) for ${TCODE_ARCH}"
             )
         endif()
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
+# BuildMsixBundle - multi-architecture MSIX bundle (x86 + x64 + arm64)
+# -----------------------------------------------------------------------------
+# This target creates an .msixbundle that contains MSIX packages for all three
+# architectures. Prerequisites: you must first build BuildMsix for each arch:
+#   cmake --build build/x64   --config Release --target BuildMsix
+#   cmake --build build/win32 --config Release --target BuildMsix
+#   cmake --build build/arm64 --config Release --target BuildMsix
+#
+# Then run this target from the x64 build directory:
+#   cmake --build build/x64 --config Release --target BuildMsixBundle
+option(BUILD_MSIX_BUNDLE "Build the multi-architecture MSIX bundle" ON)
+
+if(BUILD_MSIX_BUNDLE)
+    find_program(WINAPP_EXECUTABLE winapp REQUIRED)
+
+    if(NOT WINAPP_EXECUTABLE)
+        message(WARNING "winapp CLI not found. The 'BuildMsixBundle' target will not be available.")
+    else()
+        # Paths to pre-built per-architecture MSIX packages
+        set(MSIX_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packaging/output")
+        set(MSIX_BUNDLE_OUTPUT "${MSIX_OUTPUT_DIR}/TCodeIME-${PROJECT_VERSION}.msixbundle")
+
+        # Mapping file for makeappx bundle
+        set(MSIX_BUNDLE_MAPPING "${CMAKE_CURRENT_BINARY_DIR}/msixbundle_mapping.txt")
+
+        # Generate the mapping file at build time
+        add_custom_target(BuildMsixBundle
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${MSIX_OUTPUT_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E echo "[Files]" > "${MSIX_BUNDLE_MAPPING}"
+            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x86.msix\" \"TCodeIME-x86.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
+            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x64.msix\" \"TCodeIME-x64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
+            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-arm64.msix\" \"TCodeIME-arm64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
+            COMMAND ${WINAPP_EXECUTABLE} tool -- makeappx bundle /v /o /bv "${PROJECT_VERSION}" /f "${MSIX_BUNDLE_MAPPING}" /p "${MSIX_BUNDLE_OUTPUT}"
+            COMMAND ${CMAKE_COMMAND} -E remove "${MSIX_BUNDLE_MAPPING}"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
+            COMMENT "Building multi-architecture MSIX bundle: TCodeIME-${PROJECT_VERSION}.msixbundle"
+        )
     endif()
 endif()
 

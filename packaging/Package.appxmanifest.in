@@ -9,7 +9,7 @@
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
          xmlns:com4="http://schemas.microsoft.com/appx/manifest/com/windows10/4"
          IgnorableNamespaces="uap uap2 uap3 uap10 desktop desktop6 rescap com4">
-  <Identity Name="@PACKAGE_NAME@" Publisher="@PUBLISHER_DN@" Version="@PROJECT_VERSION@" />
+  <Identity Name="@PACKAGE_NAME@" Publisher="@PUBLISHER_DN@" Version="@PROJECT_VERSION@" ProcessorArchitecture="@TCODE_ARCH_MSIX@" />
   <Properties>
     <DisplayName>@DISPLAY_NAME@</DisplayName>
     <PublisherDisplayName>@PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>

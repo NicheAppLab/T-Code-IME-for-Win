@@ -6,6 +6,10 @@
 #define MyAppVersion "0.1.1.0"
 #endif
 
+#ifndef TCodeArch
+#define TCodeArch "x64"
+#endif
+
 [Setup]
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -15,10 +19,11 @@ DefaultGroupName={#MyAppName}
 AppId={{F7F2AE39-9C4D-4EFA-A8B2-9F1E6A7D0D2F}}
 DisableProgramGroupPage=yes
 OutputDir={#SourcePath}\installer\output
-OutputBaseFilename=TCodeIMEInstaller
+OutputBaseFilename=NicheAppLab.TCodeIME_{#MyAppVersion}_{#TCodeArch}
 Compression=lzma2/ultra
 SolidCompression=yes
 PrivilegesRequired=admin
+ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -28,11 +33,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #endif
 
 #ifndef TCodeIMEDllPath
-#define TCodeIMEDllPath SourcePath + "\build\" + Config + "\TCodeIME.dll"
+#define TCodeIMEDllPath SourcePath + "\build\" + TCodeArch + "\" + Config + "\TCodeIME.dll"
 #endif
 
 #ifndef TCodeProxyBinDir
-#define TCodeProxyBinDir SourcePath + "\proxy\TCodeProxy\bin\" + Config + "\net10.0-windows"
+#define TCodeProxyBinDir SourcePath + "\build\" + TCodeArch + "\proxy"
 #endif
 
 [Files]
