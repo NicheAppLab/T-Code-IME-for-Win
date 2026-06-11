@@ -15,7 +15,7 @@ class Program
     private const string PipeName = "TCodeEngineProxy";
     private static TCodeService.TCodeServiceClient? _grpcClient;
     private static Process? _javaProcess;
-    private static StatusWindow? _statusWindow;
+    private static StatusWindow? _statusWindow = null; // kept for future use
     private static TrayApplicationContext? _trayContext;
     private static int _selectedCandidateIndex = -1;
 
@@ -391,7 +391,7 @@ class Program
                             {
                                 // mazegaki and not kanji composition mode
                                 resp = await _grpcClient!.ConvertAsync(new ConvertRequest(), deadline: timeout);
-                                if (resp.Candidates.Count > 0)
+                                if (resp?.Candidates?.Count > 0)
                                 {
                                     _selectedCandidateIndex = (resp.Candidates.Count == 1) ? 0 : -1;
                                 }
@@ -447,7 +447,7 @@ class Program
 
                             if (c != '\0') {
                                 resp = await _grpcClient!.PutAsync(new PutRequest { Char = c.ToString() }, deadline: timeout);
-                                committed = resp.OutputBuffer;
+                                committed = resp?.OutputBuffer ?? "";
                                 _selectedCandidateIndex = -1;
                                 success = resp?.CommandSucceed ?? true;
                             }
@@ -469,7 +469,7 @@ class Program
                     }
 
                     string lastKeyChar = resp?.LastCharAsKey ?? "";
-                    if (lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
+                    if (lastKeyChar is not null && lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
                     else if (lastKeyChar == "None") lastKeyChar = "";
 
                     composition = respBuffer + (string.IsNullOrEmpty(lastKeyChar) ? "" : $"({lastKeyChar})");

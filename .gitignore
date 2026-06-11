@@ -57,5 +57,9 @@ engine/
 packaging/output/TCodeIME_cert.pfx
 devcert.pfx
 build_log.txt
-packaging/layout/AppxManifest.xml
 .github/copilot-instructions.md
+packaging/Package.appxmanifest
+winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.installer.yaml
+winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.yaml
+winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.locale.ja-JP.yaml
+packaging/secret.txt

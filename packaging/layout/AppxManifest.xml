@@ -9,7 +9,7 @@
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
          xmlns:com4="http://schemas.microsoft.com/appx/manifest/com/windows10/4"
          IgnorableNamespaces="uap uap2 uap3 uap10 desktop desktop6 rescap com4">
-  <Identity Name="NicheAppLab.T-CodeIME" Publisher="CN=NicheAppLab" Version="0.1.1.0" />
+  <Identity Name="NicheAppLab.T-CodeIME" Publisher="CN=2BF2953C-66FF-4938-ACE4-42FB3950D28C" Version="0.1.1.0" ProcessorArchitecture="arm64" />
   <Properties>
     <DisplayName>T-Code IME</DisplayName>
     <PublisherDisplayName>Niche App Lab</PublisherDisplayName>
@@ -18,6 +18,7 @@
 
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26200.0" />
+    <PackageDependency Name="Microsoft.VCLibs.Desktop.14" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" MinVersion="14.0.33728.0" />
   </Dependencies>
 
   <Resources>
