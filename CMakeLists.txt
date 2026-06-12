@@ -97,9 +97,15 @@ set_target_properties(TCodeIME PROPERTIES
 find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
 
 add_custom_target(TCodeProxy ALL
-    COMMAND ${DOTNET_EXECUTABLE} build "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj" --configuration $<CONFIG> --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+    COMMAND ${DOTNET_EXECUTABLE} publish "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj"
+        --configuration $<CONFIG>
+        --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+        --runtime win-"${TCODE_ARCH}"
+        --self-contained true
+        -p:PublishSingleFile=true
+        -p:IncludeNativeLibrariesForSelfExtract=true
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy"
-    COMMENT "Building C# TCodeProxy with dotnet build ($<CONFIG>) for ${TCODE_ARCH}"
+    COMMENT "Building C# TCodeProxy with dotnet publish ($<CONFIG>) for ${TCODE_ARCH}"
 )
 
 # -----------------------------------------------------------------------------

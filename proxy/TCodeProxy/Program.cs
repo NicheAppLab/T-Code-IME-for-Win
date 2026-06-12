@@ -461,12 +461,9 @@ class Program
                         Console.WriteLine($"[Proxy-Engine]: Engine Call Failed: {ex}");
                     }
 
-                    bool gotResponse = resp != null;
-                    if (gotResponse)
-                    {
-                        respBuffer = resp.Buffer ?? "";
-                        respCandidates = resp.Candidates?.ToList() ?? new List<string>();
-                    }
+                    respBuffer = resp?.Buffer ?? "";
+                    respCandidates = resp?.Candidates?.ToList() ?? new List<string>();
+                    
 
                     string lastKeyChar = resp?.LastCharAsKey ?? "";
                     if (lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);

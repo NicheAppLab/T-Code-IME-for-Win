@@ -1,0 +1,188 @@
+================================================================================
+                     THIRD-PARTY SOFTWARE NOTICES AND LICENSES
+================================================================================
+
+This application includes third-party software components. Your use of these 
+components is subject to the terms and conditions of their respective licenses.
+
+--------------------------------------------------------------------------------
+1. COMPILER & APPLICATION PLATFORMS
+--------------------------------------------------------------------------------
+
+A. Microsoft Visual C++ Redistributable
+   - Vendor: Microsoft Corporation
+   - License: Microsoft Software License Terms
+   - Usage: System core native execution binaries.
+   - Core Notice Summary: You may copy and distribute the object code form of the 
+     software. You may not modify it or distribute it as an unbundled component.
+     Full terms: https://aka.ms
+
+B. .NET 10 Runtime
+   - Vendor: .NET Foundation and Contributors
+   - License: MIT License
+   - Usage: Core managed application execution framework.
+   - License Text: 
+     Permission is hereby granted, free of charge, to any person obtaining a copy
+     of this software and associated documentation files (the "Software"), to deal
+     in the Software without restriction, including without limitation the rights
+     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+     copies of the Software, and to permit persons to whom the Software is
+     furnished to do so, subject to the following conditions:
+     The above copyright notice and this permission notice shall be included in all
+     copies or substantial portions of the Software.
+
+--------------------------------------------------------------------------------
+2. EMBEDDED JAVA RUNTIME ENVIRONMENTS (JRE)
+--------------------------------------------------------------------------------
+
+A. Microsoft Build of OpenJDK 25 (x64 and ARM64 Configurations)
+   - Vendor: Microsoft Corporation & OpenJDK Contributors
+   - License: GNU General Public License, version 2, with the Classpath Exception
+
+B. Azul Zulu OpenJDK 17 (Win32 / x86 Configurations)
+   - Vendor: Azul Systems, Inc. & OpenJDK Contributors
+   - License: GNU General Public License, version 2, with the Classpath Exception
+
+* Both Java runtimes are licensed under the GNU General Public License version 2 
+  with the "Classpath Exception" (GPLv2+CE). Linking these libraries statically 
+  or dynamically with independent modules to produce an executable does not 
+  subject your independent application components to the requirements of the GPLv2.
+  Full legal text: https://openjdk.org
+
+--------------------------------------------------------------------------------
+3. DOTNET (C#) APPLICATION DEPENDENCIES (NUGET)
+--------------------------------------------------------------------------------
+
+The following NuGet packages are statically or dynamically linked within the 
+main client assembly:
+
+A. Google.Protobuf
+B. Grpc.Net.Client
+C. Grpc.Tools
+   - Vendor: Google LLC / gRPC Authors
+   - License: BSD 3-Clause License
+   - License Text:
+     Redistribution and use in source and binary forms, with or without
+     modification, are permitted provided that the following conditions are met:
+     1. Redistributions of source code must retain the above copyright notice, 
+        this list of conditions and the following disclaimer.
+     2. Redistributions in binary form must reproduce the above copyright notice,
+        this list of conditions and the following disclaimer in the documentation
+        and/or other materials provided with the distribution.
+     3. Neither the name of the copyright holder nor the names of its 
+        contributors may be used to endorse or promote products derived from 
+        this software without specific prior written permission.
+
+--------------------------------------------------------------------------------
+4. JAVA ENGINE EXTENSION DEPENDENCIES (JAR FILES)
+--------------------------------------------------------------------------------
+
+The server runtime utilizes modular packages located inside the workspace layout. 
+Below are the software component declarations mapped to their upstream open-source 
+distribution boundaries:
+
+CATEGORY A: APACHE LICENSE, VERSION 2.0
+The following library assets are distributed under the Apache License 2.0:
+- com.google.api.grpc.proto-google-common-protos-2.59.2.jar
+- com.google.errorprone.error_prone_annotations-2.30.0.jar
+- com.google.guava.failureaccess-1.0.2.jar
+- com.google.guava.guava-33.3.1-android.jar
+- com.google.guava.listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar
+- io.grpc.grpc-api-1.75.0.jar
+- io.grpc.grpc-context-1.75.0.jar
+- io.grpc.grpc-core-1.75.0.jar
+- io.grpc.grpc-netty-shaded-1.75.0.jar
+- io.grpc.grpc-protobuf-1.75.0.jar
+- io.grpc.grpc-protobuf-lite-1.75.0.jar
+- io.grpc.grpc-stub-1.75.0.jar
+- io.grpc.grpc-util-1.75.0.jar
+- org.apache.pekko.pekko-actor_3-1.4.0.jar
+- org.apache.pekko.pekko-actor-typed_3-1.4.0.jar
+- org.apache.pekko.pekko-discovery_3-1.4.0.jar
+- org.apache.pekko.pekko-grpc-runtime_3-1.2.0.jar
+- org.apache.pekko.pekko-http_3-1.1.0.jar, org.apache.pekko.pekko-http_3-1.3.0.jar
+- org.apache.pekko.pekko-http-core_3-1.1.0.jar, org.apache.pekko.pekko-http-core_3-1.3.0.jar
+- org.apache.pekko.pekko-http-cors_3-1.1.0.jar, org.apache.pekko.pekko-http-cors_3-1.3.0.jar
+- org.apache.pekko.pekko-parsing_3-1.1.0.jar, org.apache.pekko.pekko-parsing_3-1.3.0.jar
+- org.apache.pekko.pekko-pki_3-1.4.0.jar
+- org.apache.pekko.pekko-protobuf-v3_3-1.4.0.jar
+- org.apache.pekko.pekko-slf4j_3-1.4.0.jar
+- org.apache.pekko.pekko-stream_3-1.4.0.jar
+- io.perfmark.perfmark-api-0.27.0.jar
+- org.parboiled.parboiled_3-2.5.1.jar
+- License Context: You may obtain a copy of the License at 
+  http://apache.org
+
+CATEGORY B: BSD 3-CLAUSE LICENSE
+The following assets are distributed under the BSD 3-Clause license:
+- com.google.code.findbugs.jsr305-3.0.2.jar
+- com.google.j2objc.j2objc-annotations-3.0.0.jar
+- com.thesamet.scalapb.lenses_3-0.11.20.jar
+- com.thesamet.scalapb.scalapb-runtime_3-0.11.20.jar
+- com.typesafe.config-1.4.5.jar
+- com.typesafe.ssl-config-core_3-0.7.1.jar
+- org.scala-lang.modules.scala-collection-compat_3-2.13.0.jar
+- org.scala-lang.scala-library-2.13.16.jar
+- org.scala-lang.scala3-library_3-3.3.7.jar
+
+CATEGORY C: MIT LICENSE
+The following assets are distributed under the MIT license boundaries:
+- com.google.code.gson.gson-2.11.0.jar
+- com.lihaoyi.geny_3-1.1.1.jar
+- com.lihaoyi.ujson_3-4.4.3.jar
+- com.lihaoyi.upack_3-4.4.3.jar
+- com.lihaoyi.upickle_3-4.4.3.jar
+- com.lihaoyi.upickle-core_3-4.4.3.jar
+- com.lihaoyi.upickle-implicits_3-4.4.3.jar
+- org.checkerframework.checker-qual-3.43.0.jar
+- org.codehaus.mojo.animal-sniffer-annotations-1.24.jar
+- org.slf4j.slf4j-api-2.0.17.jar
+- ch.qos.logback.logback-classic-1.3.15.jar
+- ch.qos.logback.logback-core-1.3.15.jar
+
+CATEGORY D: SPECIAL NOTICES (MIXED / LGPL / OTHER MULTI-LICENSES)
+- com.google.android.annotations-4.1.1.4.jar (Apache 2.0)
+- com.hierynomus.asn-one-0.6.0.jar (Apache 2.0)
+- org.reactivestreams.reactive-streams-1.0.4.jar (MIT-0 / Public Domain dedication)
+- org.xerial.sqlite-jdbc-3.53.0.0.jar (Apache 2.0 native wrapper assembly)
+- com.google.protobuf.protobuf-java-3.25.8.jar (BSD 3-Clause)
+
+CATEGORY E: FIRST-PARTY ENGINES (OPEN SOURCE GPLv2)
+- io.github.nicheapplab.tcodeengine_3.3.6-0.7.4.jar
+- tcodeserver.tcodeserver-1.0.jar
+  - Copyright (c) 2026 [Kazuhiro Funakoshi / Niche App Lab]. All rights reserved.
+  - License: GNU General Public License, version 2 (GPLv2).
+  - Context: These components are derived from upstream GPLv2 works. You may 
+    redistribute and/or modify them under the terms of the GPLv2 as published 
+    by the Free Software Foundation.
+
+--------------------------------------------------------------------------------
+5. MANDATORY WRITTEN OFFER FOR SOURCE CODE (GPLv2 Components)
+--------------------------------------------------------------------------------
+
+This application package distributes binaries licensed under the GNU General Public 
+License, version 2 (GPLv2), including:
+1. Microsoft Build of OpenJDK 25
+2. Azul Zulu OpenJDK 17
+3. io.github.nicheapplab.tcodeengine
+4. tcodeserver.tcodeserver
+
+In accordance with Section 3 of the GPLv2 license, we hereby offer to provide 
+you, or any third party, with a complete machine-readable copy of the source code 
+corresponding to these components, including any modifications made to them.
+
+To request this source code, please contact our distribution compliance alias at:
+* Email: [YOUR_SUPPORT_OR_COMPLIANCE_EMAIL@domain.com]
+
+This offer is valid for a period of three (3) years from the date you received 
+this application package deployment bundle.
+
+Alternatively, you can access our public source code repositories directly online at:
+* T-Code Engine & Server Source:
+    [https://github.com/NicheAppLab/T-Code-Engine]
+    [https://github.com/NicheAppLab/T-Code-gRPC-server]
+* Microsoft OpenJDK: [https://github.com/microsoft/openjdk]
+* Azul Systems Ecosystem: [https://github.com/zulu-openjdk]
+* Other upstream Source Tree:
+    miau/eljs: [https://github.com/miau/eljs]
+    kanchoku/tc: [https://github.com/kanchoku/tc]
