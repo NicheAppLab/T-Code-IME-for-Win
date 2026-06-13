@@ -492,10 +492,9 @@ class Program
                         Console.WriteLine($"[Proxy-Engine]: Engine Call Failed: {ex}");
                     }
 
-                    if(resp != null){
-                        respBuffer = resp!.Buffer;
-                        respCandidates = resp.Candidates?.ToList() ?? new List<string>();
-                    }
+                    respBuffer = resp!.Buffer ?? string.Empty;
+                    respCandidates = resp?.Candidates?.ToList() ?? new List<string>();
+                    
 
                     string lastKeyChar = resp?.LastCharAsKey ?? "";
                     if (lastKeyChar is not null && lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
