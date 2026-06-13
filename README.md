@@ -1,3 +1,6 @@
+![WinGet Package Version](https://img.shields.io/winget/v/NicheAppLab.T-CodeIME?label=winget%3A%20T-CodeIME)
+![WinGet Package Version](https://img.shields.io/winget/v/NicheAppLab.T-CodeIME-JRE?label=winget%3A%20T-CodeIME(JRE%20bundle))
+
 # T-Code IME for Windows
 
 This repository contains the T-Code Input Method Editor (IME) for Windows, composed of a native Text Services Framework (TSF) DLL, a C# Proxy Host, and a Java-based T-Code engine.
