@@ -19,10 +19,14 @@ struct IPCRequest {
 };
 
 struct IPCResponse {
-    uint32_t success;
-    uint32_t isActive; // 1 if engine has buffer or candidates
-    wchar_t committed[256];
-    wchar_t composition[256];
+    uint32_t commandSucceed;     // gRPC: commandSucceed
+    uint32_t isActive;           // 1 if engine has buffer or candidates
+    uint32_t commitSucceed;      // 1 if CommitAsync was called and engine reset
+    uint32_t selectedIndex;      // Index of the selected candidate
+    wchar_t outputBuffer[256];   // gRPC: outputBuffer (committed text)
+    wchar_t buffer[256];         // gRPC: buffer (composition text)
+    wchar_t candidates[512];     // gRPC: candidates (null-separated list)
+    wchar_t lastCharAsKey[64];   // gRPC: lastCharAsKey ("Some(x)" or "None")
 };
 #pragma pack(pop)
 
@@ -35,7 +39,10 @@ public:
     void Disconnect();
 
     bool SendInput(uint32_t vkCode, std::wstring& outCommitted, std::wstring& outComposition, bool* isActive = nullptr);
+    bool SendInput(uint32_t vkCode, IPCResponse& outResponse);
     bool Reset();
+
+    IPCResponse lastResponse;
 
 private:
     HANDLE _hPipe;

@@ -18,10 +18,6 @@
 
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26200.0" />
-    <PackageDependency 
-      Name="Microsoft.OpenJDK.25" 
-      MinVersion="25.0.0.0" 
-      Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
   </Dependencies>
 
   <Resources>

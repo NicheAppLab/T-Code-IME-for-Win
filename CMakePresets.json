@@ -13,6 +13,16 @@
     { "name": "win32", "inherits": "base-windows", "architecture": "Win32", "binaryDir": "${sourceDir}/build/win32" },
     { "name": "x64",   "inherits": "base-windows", "architecture": "x64",   "binaryDir": "${sourceDir}/build/x64" },
     {
+      "name": "x64-java-runtime",
+      "inherits": "base-windows",
+      "architecture": "x64",
+      "cacheVariables": {
+        "TCODE_BUNDLE_JRE": "ON",
+        "TCODE_JLINK_MODULES": "java.base,java.logging,java.sql,java.naming,java.management,java.xml,jdk.unsupported,jdk.zipfs,jdk.charsets,java.net.http,java.scripting,java.instrument,java.security.jgss,java.security.sasl,java.datatransfer,java.desktop,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.crypto.mscapi,jdk.localedata,jdk.management,jdk.management.agent,jdk.naming.dns,jdk.naming.rmi,jdk.sctp,jdk.security.auth,jdk.security.jgss"
+      },
+      "binaryDir": "${sourceDir}/build/x64-java-runtime"
+    },
+    {
       "name": "arm64",
       "inherits": "base-windows",
       "architecture": "ARM64",
@@ -38,6 +48,12 @@
       "name": "artifacts-x64",
       "inherits": "base-build",
       "configurePreset": "x64",
+      "targets": ["BuildInnoInstaller", "BuildMsix"]
+    },
+    {
+      "name": "artifacts-x64-java-runtime",
+      "inherits": "base-build",
+      "configurePreset": "x64-java-runtime",
       "targets": ["BuildInnoInstaller", "BuildMsix"]
     },
     {

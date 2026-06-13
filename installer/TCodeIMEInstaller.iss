@@ -40,10 +40,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #define TCodeProxyBinDir SourcePath + "\build\" + TCodeArch + "\proxy"
 #endif
 
+#ifndef TCodeEngineDir
+#define TCodeEngineDir SourcePath + "\engine"
+#endif
+
 [Files]
 Source: "{#TCodeIMEDllPath}"; DestDir: "{app}"; Flags: ignoreversion regserver
 Source: "{#TCodeProxyBinDir}\*"; DestDir: "{app}\proxy"; Flags: recursesubdirs createallsubdirs
-Source: "{#SourcePath}\engine\*"; DestDir: "{app}\engine"; Flags: recursesubdirs createallsubdirs
+Source: "{#TCodeEngineDir}\*"; DestDir: "{app}\engine"; Flags: recursesubdirs createallsubdirs
+#ifdef TCODEBundleJre
+; Bundle the jlink'd Java runtime
+Source: "{#TCODE_JRE_DIR}\*"; DestDir: "{app}\engine\jre"; Flags: recursesubdirs createallsubdirs
+#endif
 ; License and third-party notices
 Source: "{#SourcePath}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
