@@ -272,7 +272,7 @@ class Program
         var grpcPortEnv = Environment.GetEnvironmentVariable("TCODE_SERVER_PORT");
         var grpcPort = 57001;
         if (!string.IsNullOrEmpty(grpcPortEnv) && int.TryParse(grpcPortEnv, out var parsedPort)) grpcPort = parsedPort;
-        var grpcAddress = $"http://localhost:{grpcPort}";
+        var grpcAddress = $"http://127.0.0.1:{grpcPort}";
         Console.WriteLine($"Using gRPC address: {grpcAddress}");
 
         // 1. Setup gRPC with H2C support (unencrypted HTTP/2)
@@ -298,8 +298,10 @@ class Program
             {
                 try
                 {
-                    var pipeServer = new NamedPipeServerStream(PipeName, PipeDirection.InOut, 
-                        NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                    var pipeSecurity = new System.IO.Pipes.PipeSecurity();
+                    pipeSecurity.AddAccessRule(new System.IO.Pipes.PipeAccessRule(new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null), System.IO.Pipes.PipeAccessRights.ReadWrite, System.Security.AccessControl.AccessControlType.Allow));
+                    var pipeServer = System.IO.Pipes.NamedPipeServerStreamAcl.Create(PipeName, System.IO.Pipes.PipeDirection.InOut, 
+                        System.IO.Pipes.NamedPipeServerStream.MaxAllowedServerInstances, System.IO.Pipes.PipeTransmissionMode.Byte, System.IO.Pipes.PipeOptions.Asynchronous, 0, 0, pipeSecurity);
                     
                     await pipeServer.WaitForConnectionAsync();
                     
@@ -391,18 +393,18 @@ class Program
                             {
                                 // mazegaki and not kanji composition mode
                                 resp = await _grpcClient!.ConvertAsync(new ConvertRequest(), deadline: timeout);
-                                if (resp?.Candidates?.Count > 0)
+                                if (resp.Candidates?.Count > 0)
                                 {
                                     _selectedCandidateIndex = (resp.Candidates.Count == 1) ? 0 : -1;
                                 }
                                 success = resp?.CommandSucceed ?? true;
                             }
                         }
-                        else if (vkey == 37 || vkey == 39) // VK_LEFT, VK_RIGHT
+                        else if (vkey == 37 || vkey == 39 || vkey == 38 || vkey == 40) // VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN
                         {
                             if (respCandidates.Count > 0)
                             {
-                                if (vkey == 39) _selectedCandidateIndex = (_selectedCandidateIndex + 1) % respCandidates.Count;
+                                if (vkey == 39 || vkey == 40) _selectedCandidateIndex = (_selectedCandidateIndex + 1) % respCandidates.Count;
                                 else _selectedCandidateIndex = (_selectedCandidateIndex <= 0) ? respCandidates.Count - 1 : _selectedCandidateIndex - 1;
                                 success = true;
                             }
@@ -434,22 +436,51 @@ class Program
                         else if ((vkey >= 48 && vkey <= 57) || (vkey >= 65 && vkey <= 90) || (vkey >= 186 && vkey <= 222))
                         {
                             char c = '\0';
-                            if (vkey >= 65 && vkey <= 90) c = (char)(vkey + 32); // a-z
-                            else if (vkey >= 48 && vkey <= 57) c = (char)vkey; // 0-9
-                            else {
-                                // Punctuation mapping (standard US layout)
-                                c = vkey switch {
-                                    186 => ';', 187 => '=', 188 => ',', 189 => '-', 190 => '.', 191 => '/', 
-                                    192 => '`', 219 => '[', 220 => '\\', 221 => ']', 222 => '\'',
-                                    _ => '\0'
-                                };
+                            if (respCandidates.Count > 0 && vkey >= 49 && vkey <= 57) // '1'-'9'
+                            {
+                                int idx = (int)(vkey - 49);
+                                if (idx < respCandidates.Count)
+                                {
+                                    resp = await _grpcClient!.SelectAsync(new SelectCandidateRequest { N = idx }, deadline: timeout);
+                                    var commitResp = await _grpcClient!.CommitAsync(new CommitRequest(), deadline: timeout);
+                                    committed = commitResp.Output;
+                                    _selectedCandidateIndex = -1;
+                                    success = resp?.CommandSucceed ?? true;
+                                }
+                                else
+                                {
+                                    success = false; // invalid selection
+                                }
+                            }
+                            else
+                            {
+                                if (vkey >= 65 && vkey <= 90) c = (char)(vkey + 32); // a-z
+                                else if (vkey >= 48 && vkey <= 57) c = (char)vkey; // 0-9
+                                else {
+                                    // Punctuation mapping (standard US layout)
+                                    c = vkey switch {
+                                        186 => ';', 187 => '=', 188 => ',', 189 => '-', 190 => '.', 191 => '/', 
+                                        192 => '`', 219 => '[', 220 => '\\', 221 => ']', 222 => '\'',
+                                        _ => '\0'
+                                    };
+                                }
                             }
 
                             if (c != '\0') {
                                 resp = await _grpcClient!.PutAsync(new PutRequest { Char = c.ToString() }, deadline: timeout);
-                                committed = resp?.OutputBuffer ?? "";
                                 _selectedCandidateIndex = -1;
                                 success = resp?.CommandSucceed ?? true;
+                                // If the engine produced committed output, use CommitAsync to properly
+                                // finalize it and clear the engine state.
+                                if (success && !string.IsNullOrEmpty(resp?.OutputBuffer))
+                                {
+                                    var commitResp = await _grpcClient!.CommitAsync(new CommitRequest(), deadline: timeout);
+                                    committed = commitResp.Output;
+                                }
+                                else
+                                {
+                                    committed = "";
+                                }
                             }
                         }
                         else if (type == 2) // Reset
@@ -461,12 +492,9 @@ class Program
                         Console.WriteLine($"[Proxy-Engine]: Engine Call Failed: {ex}");
                     }
 
-                    bool gotResponse = resp != null;
-                    if (gotResponse)
-                    {
-                        respBuffer = resp.Buffer ?? "";
-                        respCandidates = resp.Candidates?.ToList() ?? new List<string>();
-                    }
+                    respBuffer = resp!.Buffer ?? string.Empty;
+                    respCandidates = resp?.Candidates?.ToList() ?? new List<string>();
+                    
 
                     string lastKeyChar = resp?.LastCharAsKey ?? "";
                     if (lastKeyChar is not null && lastKeyChar.StartsWith("Some(")) lastKeyChar = lastKeyChar.Substring(5, 1);
@@ -485,12 +513,11 @@ class Program
                         // Diagnostic: print the raw engine response for troubleshooting conversion
                         Console.WriteLine($"[Proxy-EngineResp]: Buffer='{resp?.Buffer ?? ""}', Candidates={resp?.Candidates?.Count ?? 0}, CommandSucceed={resp?.CommandSucceed}");
 
-                        // If we just committed text, reset the engine for the next sequence
+                        // If we just committed text, clear local state for the next sequence.
+                        // The engine is already reset internally by CommitAsync.
                         if (!string.IsNullOrEmpty(committed))
                         {
                             composition = ""; // Force empty on commit to prevent duplicates
-                            Console.WriteLine("[Proxy]: Resetting engine after commit...");
-                            await _grpcClient!.ResetAsync(new ResetRequest(), deadline: timeout);
                             respBuffer = "";
                             respCandidates.Clear();
                         }
@@ -517,8 +544,17 @@ class Program
                     _statusWindow?.UpdateStatus(statusText);
 
                     Console.WriteLine("[Proxy]: Sending response back to pipe...");
-                    // Prepare the 1032-byte response buffer
-                    byte[] responseBuffer = new byte[1032];
+                    // Prepare the response buffer matching IPCResponse layout:
+                    //   uint32 commandSucceed  (offset 0, size 4)
+                    //   uint32 isActive        (offset 4, size 4)
+                    //   uint32 commitSucceed   (offset 8, size 4)
+                    //   uint32 selectedIndex   (offset 12, size 4)
+                    //   wchar_t outputBuffer[256] (offset 16, size 512)
+                    //   wchar_t buffer[256]    (offset 528, size 512)
+                    //   wchar_t candidates[512] (offset 1040, size 1024)
+                    //   wchar_t lastCharAsKey[64] (offset 2064, size 128)
+                    // Total: 2192 bytes
+                    byte[] responseBuffer = new byte[2192];
                     Array.Clear(responseBuffer, 0, responseBuffer.Length);
 
                     uint successVal = success ? 1u : 0u;
@@ -526,14 +562,31 @@ class Program
 
                     uint activeVal = (respBuffer.Length > 0 || respCandidates.Count > 0 || !string.IsNullOrEmpty(committed)) ? 1u : 0u;
                     BitConverter.TryWriteBytes(responseBuffer.AsSpan(4, 4), activeVal);
-                    
-                    byte[] committedBytes = System.Text.Encoding.Unicode.GetBytes(committed);
-                    int committedCount = Math.Min(committedBytes.Length, 510);
-                    Buffer.BlockCopy(committedBytes, 0, responseBuffer, 8, committedCount);
 
-                    byte[] compositionBytes = System.Text.Encoding.Unicode.GetBytes(composition);
-                    int compositionCount = Math.Min(compositionBytes.Length, 510);
-                    Buffer.BlockCopy(compositionBytes, 0, responseBuffer, 520, compositionCount);
+                    uint commitVal = !string.IsNullOrEmpty(committed) ? 1u : 0u;
+                    BitConverter.TryWriteBytes(responseBuffer.AsSpan(8, 4), commitVal);
+
+                    uint selIdxVal = (uint)Math.Max(0, _selectedCandidateIndex);
+                    BitConverter.TryWriteBytes(responseBuffer.AsSpan(12, 4), selIdxVal);
+
+                    byte[] committedBytes = System.Text.Encoding.Unicode.GetBytes(committed ?? "");
+                    int committedCount = Math.Min(committedBytes.Length, 510);
+                    Buffer.BlockCopy(committedBytes, 0, responseBuffer, 16, committedCount);
+
+                    byte[] bufferBytes = System.Text.Encoding.Unicode.GetBytes(respBuffer ?? "");
+                    int bufferCount = Math.Min(bufferBytes.Length, 510);
+                    Buffer.BlockCopy(bufferBytes, 0, responseBuffer, 528, bufferCount);
+
+                    // Write candidates as null-separated UTF-16 strings
+                    byte[] candidatesBytes = System.Text.Encoding.Unicode.GetBytes(
+                        string.Join("\0", respCandidates) + "\0"
+                    );
+                    int candidatesCount = Math.Min(candidatesBytes.Length, 1022);
+                    Buffer.BlockCopy(candidatesBytes, 0, responseBuffer, 1040, candidatesCount);
+
+                    byte[] lastCharAsKeyBytes = System.Text.Encoding.Unicode.GetBytes(lastKeyChar ?? "");
+                    int lastCharAsKeyCount = Math.Min(lastCharAsKeyBytes.Length, 126);
+                    Buffer.BlockCopy(lastCharAsKeyBytes, 0, responseBuffer, 2064, lastCharAsKeyCount);
 
                     pipe.Write(responseBuffer, 0, responseBuffer.Length);
                     pipe.Flush(); 
@@ -623,13 +676,37 @@ class Program
 
         Console.WriteLine($"Engine config: port={serverPort}, dict-dir={dictDirResolved}");
 
+        // Check if a bundled JRE exists next to the engine directory
+        string? bundledJreDir = null;
+        if (workingDir != null)
+        {
+            var jrePath = Path.Combine(workingDir, "jre");
+            if (Directory.Exists(jrePath) && File.Exists(Path.Combine(jrePath, "bin", "java.exe")))
+            {
+                bundledJreDir = jrePath;
+                Console.WriteLine($"Found bundled JRE at: {bundledJreDir}");
+            }
+        }
+
+        // Build the command with environment variables
+        var cmdEnv = new System.Text.StringBuilder();
+        cmdEnv.Append($"set JAVA_OPTS=-Duser.home=\"{workingDir ?? AppContext.BaseDirectory}\" -Dtcode-server.server.port={serverPort} -Dtcode-server.dict-dir=\"{dictDirResolved}\"");
+        if (bundledJreDir != null)
+        {
+            // Set BUNDLED_JVM for tcodeserver.bat to pick up the bundled JRE
+            cmdEnv.Append($" && set \"BUNDLED_JVM={bundledJreDir}\"");
+            // Also set JAVA_HOME and prepend to PATH for good measure
+            cmdEnv.Append($" && set \"JAVA_HOME={bundledJreDir}\"");
+            cmdEnv.Append($" && set \"PATH={bundledJreDir}\\bin;%PATH%\"");
+        }
+        cmdEnv.Append($" && \"{scriptPath}\"");
+
         _javaProcess = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                // Pass system properties to the JVM via JAVA_OPTS so the server picks them up
-                Arguments = $"/c \"set JAVA_OPTS=-Duser.home=\"{workingDir ?? AppContext.BaseDirectory}\" -Dtcode-server.server.port={serverPort} -Dtcode-server.dict-dir=\"{dictDirResolved}\" && \"{scriptPath}\"\"",
+                Arguments = $"/c \"{cmdEnv}\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

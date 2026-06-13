@@ -63,3 +63,7 @@ winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.installer
 winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.yaml
 winget/manifests/n/NicheAppLab/T-CodeIME/0.1.1.0/NicheAppLab.T-CodeIME.locale.ja-JP.yaml
 packaging/secret.txt
+packaging/layout/AppxManifest.xml
+winget/manifests/n/NicheAppLab/T-CodeIME/0.2.0.0/NicheAppLab.T-CodeIME.installer.yaml
+winget/manifests/n/NicheAppLab/T-CodeIME/0.2.0.0/NicheAppLab.T-CodeIME.locale.ja-JP.yaml
+winget/manifests/n/NicheAppLab/T-CodeIME/0.2.0.0/NicheAppLab.T-CodeIME.yaml

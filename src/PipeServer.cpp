@@ -60,17 +60,17 @@ void PipeServer::HandleClient(HANDLE hPipe) {
     DWORD bytesRead;
     
     while (ReadFile(hPipe, &req, sizeof(req), &bytesRead, NULL) && bytesRead != 0) {
-        IPCResponse res = { 0, 0, L"", L"" };
+        IPCResponse res = {};
 
         if (req.type == CommandType::Input) {
             std::wstring comp;
             if (_pEngineClient->SendInput(req.data, comp)) {
-                res.success = true;
-                wcscpy_s(res.composition, comp.c_str());
+                res.commandSucceed = 1;
+                wcscpy_s(res.buffer, comp.c_str());
             }
         } else if (req.type == CommandType::Reset) {
             if (_pEngineClient->Reset()) {
-                res.success = true;
+                res.commandSucceed = 1;
             }
         }
 

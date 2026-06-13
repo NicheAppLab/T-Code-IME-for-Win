@@ -29,8 +29,32 @@ else()
     set(TCODE_ARCH "x64")
     set(TCODE_ARCH_MSIX "x64")
 endif()
+# Plain arch (no JRE suffix) for build output paths; may be updated if bundling JRE
+set(TCODE_ARCH_PLAIN "${TCODE_ARCH}")
 
 message(STATUS "Target architecture: ${TCODE_ARCH} (CMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM})")
+
+# -----------------------------------------------------------------------------
+# Java Runtime bundling option (x64-java-runtime configuration)
+# -----------------------------------------------------------------------------
+# When enabled, jlink creates a minimal JRE from the x64 JDK and bundles it
+# with the deployment. The tcodeserver.bat script will use the bundled JRE
+# via the BUNDLED_JVM variable.
+option(TCODE_BUNDLE_JRE "Bundle a jlink'd Java runtime with the deployment" OFF)
+
+if(TCODE_BUNDLE_JRE)
+    # Path to the x64 JDK for jlink
+    set(TCODE_JDK_HOME "C:/Program Files/Microsoft/jdk-25.0.3.9-hotspot" CACHE PATH "Path to the JDK home for jlink")
+    # Modules to include in the jlink'd JRE (customize via CMakePresets cacheVariables)
+    if(NOT TCODE_JLINK_MODULES)
+        set(TCODE_JLINK_MODULES "java.base,java.logging,java.sql,java.naming,java.management,java.xml,jdk.unsupported,jdk.zipfs,jdk.charsets,java.net.http,java.scripting,java.instrument,java.security.jgss,java.security.sasl,java.datatransfer,java.desktop,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.crypto.mscapi,jdk.localedata,jdk.management,jdk.management.agent,jdk.naming.dns,jdk.naming.rmi,jdk.sctp,jdk.security.auth,jdk.security.jgss")
+    endif()
+    set(TCODE_JRE_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/jre")
+    message(STATUS "Java runtime bundling ENABLED")
+    message(STATUS "  JDK home: ${TCODE_JDK_HOME}")
+    message(STATUS "  JRE output: ${TCODE_JRE_OUTPUT_DIR}")
+    message(STATUS "  jlink modules: ${TCODE_JLINK_MODULES}")
+endif()
 
 # Set package identity and publisher for MSIX
 set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
@@ -53,6 +77,7 @@ set(IME_SRC_FILES
     src/Compartment.cpp
     src/CompartmentEventSink.cpp
     src/CTCodeModeButton.cpp
+    src/CTCodeCandidateListUI.cpp
     src/Globals.cpp
     src/IPCClient.cpp
     src/PipeServer.cpp
@@ -88,6 +113,7 @@ set_target_properties(TCodeIME PROPERTIES
     LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/TCodeIME.def"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}"
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 
 # -----------------------------------------------------------------------------
@@ -96,10 +122,65 @@ set_target_properties(TCodeIME PROPERTIES
 find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
 
 add_custom_target(TCodeProxy ALL
-    COMMAND ${DOTNET_EXECUTABLE} build "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj" --configuration $<CONFIG> --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+    COMMAND ${DOTNET_EXECUTABLE} publish "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj"
+        --configuration $<CONFIG>
+        --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+        --runtime win-"${TCODE_ARCH}"
+        --self-contained true
+        -p:PublishSingleFile=true
+        -p:IncludeNativeLibrariesForSelfExtract=true
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy"
-    COMMENT "Building C# TCodeProxy with dotnet build ($<CONFIG>) for ${TCODE_ARCH}"
+    COMMENT "Building C# TCodeProxy with dotnet publish ($<CONFIG>) for ${TCODE_ARCH}"
 )
+
+# -----------------------------------------------------------------------------
+# Bundled JRE (jlink) - only when TCODE_BUNDLE_JRE is ON
+# -----------------------------------------------------------------------------
+if(TCODE_BUNDLE_JRE)
+    find_program(JLINK_EXECUTABLE jlink
+        PATHS
+            "${TCODE_JDK_HOME}/bin"
+            "C:/Program Files/Microsoft/jdk-25.0.3.9-hotspot/bin"
+            "C:/Program Files/Java/jdk-25/bin"
+            "C:/Program Files/Eclipse Adoptium/jdk-25.0.3.9-hotspot/bin"
+        REQUIRED
+    )
+
+    # Custom target to run jlink and stage the engine + JRE for deployment
+    add_custom_target(BuildBundledJre ALL
+        COMMAND ${CMAKE_COMMAND} -E echo "Running jlink to create bundled JRE..."
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${TCODE_JRE_OUTPUT_DIR}"
+        COMMAND ${JLINK_EXECUTABLE}
+            --add-modules "${TCODE_JLINK_MODULES}"
+            --output "${TCODE_JRE_OUTPUT_DIR}"
+            --strip-debug
+            --no-man-pages
+            --no-header-files
+            --compress zip-6
+        COMMAND ${CMAKE_COMMAND} -E echo "jlink complete. Bundled JRE at ${TCODE_JRE_OUTPUT_DIR}"
+        # Stage engine files for deployment (bin + lib) — original tcodeserver.bat
+        # already supports BUNDLED_JVM, and TCodeProxy.exe sets the env vars.
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/engine/bin" "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/engine/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/engine/lib" "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/engine/lib"
+        WORKING_DIRECTORY "${TCODE_JDK_HOME}/bin"
+        COMMENT "Creating bundled JRE with jlink for ${TCODE_ARCH}"
+        DEPENDS TCodeProxy
+    )
+
+    # Make the installer and MSIX targets depend on the bundled JRE
+    set(TCODE_JRE_DEPENDS BuildBundledJre)
+    set(TCODE_BUNDLE_JRE_DEFINE "/DTCODEBundleJre=1")
+    set(TCODE_JRE_DIR "${TCODE_JRE_OUTPUT_DIR}")
+    set(TCODE_ENGINE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/engine")
+    # Save original arch for build output paths, then append JRE suffix for filenames
+    set(TCODE_ARCH_PLAIN "${TCODE_ARCH}")
+    set(TCODE_ARCH "${TCODE_ARCH}_jre")
+else()
+    set(TCODE_JRE_DEPENDS "")
+    set(TCODE_BUNDLE_JRE_DEFINE "")
+    set(TCODE_JRE_DIR "")
+    set(TCODE_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/engine")
+endif()
 
 # -----------------------------------------------------------------------------
 # TCodeInstaller (Inno Setup Installer)
@@ -125,11 +206,14 @@ if(BUILD_INSTALLER)
                 "/DMyAppVersion=${PROJECT_VERSION}"
                 "/DConfig=$<CONFIG>"
                 "/DTCodeArch=${TCODE_ARCH}"
-                "/DTCodeIMEDllPath=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/$<CONFIG>/TCodeIME.dll"
-                "/DTCodeProxyBinDir=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+                "/DTCodeIMEDllPath=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/$<CONFIG>/TCodeIME.dll"
+                "/DTCodeProxyBinDir=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/proxy"
+                ${TCODE_BUNDLE_JRE_DEFINE}
+                "/DTCODE_JRE_DIR=${TCODE_JRE_DIR}"
+                "/DTCodeEngineDir=${TCODE_ENGINE_DIR}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/installer"
-            DEPENDS TCodeIME TCodeProxy
+            DEPENDS TCodeIME TCodeProxy ${TCODE_JRE_DEPENDS}
             COMMENT "Building Inno Setup installer package ($<CONFIG>) for ${TCODE_ARCH}"
         )
     endif()
@@ -193,6 +277,17 @@ if(BUILD_MSIX)
         set(CERTIFICATE_PATH "" CACHE STRING "Path to certificate file (.pfx)")
         set(CERTIFICATE_PASSWORD "" CACHE STRING "Password for certificate (optional)")
 
+        # Common JRE copy step for MSIX layout (used when bundling JRE)
+        if(TCODE_BUNDLE_JRE)
+            set(MSIX_JRE_COPY_COMMAND
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${TCODE_JRE_OUTPUT_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${LAYOUT_DIR}/engine/jre"
+            )
+            set(MSIX_JRE_DEPENDS BuildBundledJre)
+        else()
+            set(MSIX_JRE_COPY_COMMAND "")
+            set(MSIX_JRE_DEPENDS "")
+        endif()
+
         if(SIGN_MSIX AND SIGNTOOL_EXECUTABLE AND CERTIFICATE_PATH AND NOT CERTIFICATE_PATH STREQUAL "")
             # Resolve certificate path to absolute (in case it's relative to source dir)
             get_filename_component(CERT_ABSOLUTE_PATH "${CERTIFICATE_PATH}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -200,27 +295,33 @@ if(BUILD_MSIX)
             if(CERTIFICATE_PASSWORD AND NOT CERTIFICATE_PASSWORD STREQUAL "")
                 add_custom_target(BuildMsix
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                    ${MSIX_JRE_COPY_COMMAND}
                     COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
                     COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERT_ABSOLUTE_PATH}" /p "${CERTIFICATE_PASSWORD}" /fd SHA256 "${MSIX_OUTPUT}"
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
                     COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
+                    DEPENDS ${MSIX_JRE_DEPENDS}
                 )
             else()
                 add_custom_target(BuildMsix
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                    ${MSIX_JRE_COPY_COMMAND}
                     COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
                     COMMAND ${SIGNTOOL_EXECUTABLE} sign /f "${CERT_ABSOLUTE_PATH}" /fd SHA256 "${MSIX_OUTPUT}"
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
                     COMMENT "Building and signing MSIX package with winapp ($<CONFIG>) for ${TCODE_ARCH}"
+                    DEPENDS ${MSIX_JRE_DEPENDS}
                 )
             endif()
         else()
             # Build MSIX without signing using winapp CLI
             add_custom_target(BuildMsix
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${OUTPUT_DIR}"
+                ${MSIX_JRE_COPY_COMMAND}
                 COMMAND ${WINAPP_EXECUTABLE} pack "${LAYOUT_DIR}" --manifest "layout/AppxManifest.xml" --output "${OUTPUT_DIR}/TCodeIME-${TCODE_ARCH}.msix" -v
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"
                 COMMENT "Building MSIX package using winapp CLI ($<CONFIG>) for ${TCODE_ARCH}"
+                DEPENDS ${MSIX_JRE_DEPENDS}
             )
         endif()
     endif()
@@ -252,13 +353,14 @@ if(BUILD_MSIX_BUNDLE)
         # Mapping file for makeappx bundle
         set(MSIX_BUNDLE_MAPPING "${CMAKE_CURRENT_BINARY_DIR}/msixbundle_mapping.txt")
 
-        # Generate the mapping file at build time
+        # Generate the mapping file at configure time
+        file(WRITE "${MSIX_BUNDLE_MAPPING}" "[Files]\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-x86.msix\" \"TCodeIME-x86.msix\"\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-x64.msix\" \"TCodeIME-x64.msix\"\n")
+        file(APPEND "${MSIX_BUNDLE_MAPPING}" "\"${MSIX_OUTPUT_DIR}/TCodeIME-arm64.msix\" \"TCodeIME-arm64.msix\"\n")
+
         add_custom_target(BuildMsixBundle
             COMMAND ${CMAKE_COMMAND} -E make_directory "${MSIX_OUTPUT_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E echo "[Files]" > "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x86.msix\" \"TCodeIME-x86.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-x64.msix\" \"TCodeIME-x64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
-            COMMAND ${CMAKE_COMMAND} -E echo "\"${MSIX_OUTPUT_DIR}/TCodeIME-arm64.msix\" \"TCodeIME-arm64.msix\"" >> "${MSIX_BUNDLE_MAPPING}"
             COMMAND ${WINAPP_EXECUTABLE} tool -- makeappx bundle /v /o /bv "${PROJECT_VERSION}" /f "${MSIX_BUNDLE_MAPPING}" /p "${MSIX_BUNDLE_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E remove "${MSIX_BUNDLE_MAPPING}"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging"

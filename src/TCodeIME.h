@@ -3,9 +3,12 @@
 #include <windows.h>
 #include <msctf.h>
 #include <memory>
+#include <vector>
+#include <string>
 #include "IPCClient.h"
 #include "helper.h"
 class CTCodeModeButton;
+class CTCodeCandidateListUI;
 
 enum class InputMode;
 class CTCodeIME : public ITfTextInputProcessorEx,
@@ -60,6 +63,11 @@ public:
     // ITfCompartmentEventSink methods
     STDMETHODIMP OnChange(REFGUID rguid);
 
+    // Candidate list management
+    void UpdateCandidateList(const std::vector<std::wstring>& candidates, int selectedIndex);
+    void HideCandidateList();
+    void SyncCandidateListFromIPC();
+
     // Internal helpers
     BOOL _InitCompartmentEventSink();
     void _UninitCompartmentEventSink();
@@ -73,9 +81,15 @@ private:
     tcode::IPCClient* _pIPCClient;
     ITfComposition* _pComposition;
     CComPtr<CTCodeModeButton> _pModeButton;
+    CComPtr<CTCodeCandidateListUI> _pCandidateList;
     DWORD _dwCompartmentEventSinkOpenCloseCookie;
     DWORD _dwCompartmentEventSinkInputmodeConversionCookie;
+    DWORD _dwCandidateListUIElementId;
+
+    void CTCodeIME::MoveCandidateWindowToCaret();
+
     friend class CManageCompositionEditSession;
+    friend class CTCodeCandidateListUI;
 
 };
 
