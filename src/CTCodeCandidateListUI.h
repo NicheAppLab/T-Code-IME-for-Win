@@ -57,6 +57,10 @@ public:
 
     // Helper to initialize the window
     void CreateCandidateWindow(HWND hParentWnd = NULL);
+    void SetDocumentMgr(ITfDocumentMgr* pDocMgr);
+
+    // A static Window Procedure to handle messages for this window
+    static LRESULT CALLBACK CandidateWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 private:
     LONG _cRef;
@@ -69,8 +73,6 @@ private:
     std::vector<UINT> _pageIndex;
     HWND _hCandidateWnd;
 
-    // A static Window Procedure to handle messages for this window
-    static LRESULT CALLBACK CandidateWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-
     static const UINT CANDIDATES_PER_PAGE = 9;
+    ITfDocumentMgr* _pCachedDocMgr = nullptr;
 };

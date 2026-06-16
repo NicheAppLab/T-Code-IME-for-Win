@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+
+PackageIdentifier: NicheAppLab.T-CodeIME
+PackageVersion: @PROJECT_VERSION@
+InstallerType: inno
+Installers:
+- Architecture: x86
+  InstallerUrl: https://github.com/NicheAppLab/T-Code-IME-for-Win/releases/download/@PROJECT_VERSION@/NicheAppLab.TCodeIME_@PROJECT_VERSION@_x86.exe
+  InstallerSha256: @WINGET_SHA256_X86@
+- Architecture: x64
+  InstallerUrl: https://github.com/NicheAppLab/T-Code-IME-for-Win/releases/download/@PROJECT_VERSION@/NicheAppLab.TCodeIME_@PROJECT_VERSION@_x64.exe
+  InstallerSha256: @WINGET_SHA256_X64@
+- Architecture: arm64
+  InstallerUrl: https://github.com/NicheAppLab/T-Code-IME-for-Win/releases/download/@PROJECT_VERSION@/NicheAppLab.TCodeIME_@PROJECT_VERSION@_arm64.exe
+  InstallerSha256: @WINGET_SHA256_ARM64@
+ManifestType: installer
+ManifestVersion: 1.12.0
