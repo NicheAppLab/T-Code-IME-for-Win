@@ -99,7 +99,7 @@ bool IPCClient::SendInput(uint32_t vkCode, std::wstring& outCommitted, std::wstr
 
     if (isActive) *isActive = (res.isActive == 1);
     outCommitted = res.outputBuffer;
-    outComposition = res.buffer;
+    outComposition = std::wstring(res.buffer) + res.lastCharAsKey;
     return res.commandSucceed == 1;
 }
 

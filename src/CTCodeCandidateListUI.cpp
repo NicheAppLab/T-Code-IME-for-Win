@@ -3,39 +3,45 @@
 #include "Globals.h"
 #include <atlbase.h>
 
-CTCodeCandidateListUI::CTCodeCandidateListUI(CTCodeIME* pIME)
-    : _cRef(1)
-    , _pIME(pIME)
-    , _selectedIndex(-1)
-    , _isShown(false)
-    , _updatedFlags(0)
-    , _currentPage(0)
-    , _hCandidateWnd(NULL)
-{
-    // Register the window class once during instantiation
-    WNDCLASSEXW wc = {0};
-    wc.cbSize = sizeof(WNDCLASSEXW);
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = CTCodeCandidateListUI::CandidateWndProc;
-    wc.hInstance = GetModuleHandle(NULL); // Or your TIP dll instance
-    wc.lpszClassName = L"TCodeCandidateWindowClassName";
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+// A safe, file-level static variable to ensure we don't double-register
+static BOOL g_bClassRegistered = FALSE;
 
-    RegisterClassExW(&wc);
-    
-    // Create the actual window handle
-    CreateCandidateWindow();
-    DllAddRef();
-}
-
-CTCodeCandidateListUI::~CTCodeCandidateListUI()
+CTCodeCandidateListUI::CTCodeCandidateListUI(CTCodeIME* pIME) 
+    : _cRef(1) , _pIME(pIME) , _selectedIndex(-1) , _isShown(false) 
+    , _updatedFlags(0) , _currentPage(0) , _hCandidateWnd(NULL) 
 {
-    if (_hCandidateWnd) {
-        DestroyWindow(_hCandidateWnd);
+    // Fix: Only register if it hasn't been registered yet this session
+    if (!g_bClassRegistered) {
+        WNDCLASSEXW wc = {0};
+        wc.cbSize = sizeof(WNDCLASSEXW);
+        wc.style = CS_HREDRAW | CS_VREDRAW;
+        wc.lpfnWndProc = CTCodeCandidateListUI::CandidateWndProc;
+        wc.hInstance = GetModuleHandle(NULL); 
+        wc.lpszClassName = L"TCodeCandidateWindowClassName";
+        wc.hbrBackground = (HBRUSH)::GetStockObject(WHITE_BRUSH); // Pure white background
+
+        if (RegisterClassExW(&wc)) {
+            g_bClassRegistered = TRUE;
+        }
     }
-    UnregisterClassW(L"TCodeCandidateWindowClassName", GetModuleHandle(NULL));
-    DllRelease();
+    
+    DllAddRef(); // Keep your original COM tracking intact!
 }
+
+CTCodeCandidateListUI::~CTCodeCandidateListUI() {
+    if (_hCandidateWnd && ::IsWindow(_hCandidateWnd)) {
+        ::DestroyWindow(_hCandidateWnd);
+        _hCandidateWnd = NULL;
+    }
+    
+    // CRUCIAL FIX: DO NOT call UnregisterClassW here.
+    // Leaving the template class alive in memory prevents the 2-minute freeze,
+    // and removing it from here prevents the DLL from crashing.
+    
+    DllRelease(); // Keep your original COM tracking intact!
+}
+
+
 
 void CTCodeCandidateListUI::CreateCandidateWindow(HWND hParentWnd) {
     _hCandidateWnd = CreateWindowExW(
@@ -151,40 +157,84 @@ BOOL CTCodeCandidateListUI::IsShown() const { return _isShown; }
 STDMETHODIMP CTCodeCandidateListUI::Show(BOOL bShow) { 
     _isShown = (bShow != FALSE); 
 
-    // Assuming you store your native candidate window handle in _hCandidateWnd
-    if (_hCandidateWnd) {
-        if (_isShown) {
-            RECT rcWnd;
-            GetWindowRect(_hCandidateWnd, &rcWnd);
-            if(rcWnd.left != 0 && rcWnd.top != 0){
-                // CRUCIAL: Use SW_SHOWNA so your candidate window doesn't steal keyboard focus.
-                // If it steals focus, the active app loses focus, and TSF kills the candidate list instantly.
-                ::ShowWindow(_hCandidateWnd, SW_SHOWNA);
-                
-                // Force a window repaint so your candidates get painted via WM_PAINT
-                ::InvalidateRect(_hCandidateWnd, NULL, TRUE);
-                ::UpdateWindow(_hCandidateWnd);
+    if (_isShown) {
+        // LAZY INITIALIZATION: Build the window only when it's time to display it
+        if (!_hCandidateWnd || !::IsWindow(_hCandidateWnd)) {
+            
+            // FIX 1: Explicitly declare the variable first!
+            HWND hActiveAppWnd = NULL; 
+
+            // 1. Fetch the absolute active application window handle via TSF
+            if (_pIME && _pIME->_pThreadMgr) {
+                CComPtr<ITfDocumentMgr> pDocMgr;
+                if (SUCCEEDED(_pIME->_pThreadMgr->GetFocus(&pDocMgr)) && pDocMgr) {
+                    CComPtr<ITfContext> pContext;
+                    if (SUCCEEDED(pDocMgr->GetTop(&pContext)) && pContext) {
+                        CComPtr<ITfContextView> pContextView;
+                        if (SUCCEEDED(pContext->GetActiveView(&pContextView)) && pContextView) {
+                            pContextView->GetWnd(&hActiveAppWnd); // Get Notepad's HWND
+                        }
+                    }
+                }
             }
-        } else {
+
+            // 2. Fallback if TSF is still initializing its focus map
+            if (!hActiveAppWnd) {
+                hActiveAppWnd = ::GetForegroundWindow();
+            }
+
+            // 3. Create the window with a solid, verified parent handle
+            CreateCandidateWindow(hActiveAppWnd);
+
+            if(_pIME){
+                _pIME->TriggerPositionUpdate();
+            }
+        }
+
+        // Display the window safely
+        if (_hCandidateWnd) {
+            // FIX 2: Remove the coordinate (0,0) gatekeeper check completely!
+            // We force a standard, focus-safe display pass right out of the box.
+            ::ShowWindow(_hCandidateWnd, SW_SHOWNA);
+            ::InvalidateRect(_hCandidateWnd, NULL, TRUE);
+            ::UpdateWindow(_hCandidateWnd);
+        }
+    } else {
+        if (_hCandidateWnd && ::IsWindow(_hCandidateWnd)) {
             ::ShowWindow(_hCandidateWnd, SW_HIDE);
         }
     }
     return S_OK; 
 }
 
+
 // ITfCandidateListUIElement
-STDMETHODIMP CTCodeCandidateListUI::GetDocumentMgr(ITfDocumentMgr** ppdim)
-{
+STDMETHODIMP CTCodeCandidateListUI::GetDocumentMgr(ITfDocumentMgr** ppdim) {
     if (!ppdim) return E_INVALIDARG;
     *ppdim = nullptr;
-    // Return the current document manager from the thread manager
-    if (_pIME && _pIME->_pThreadMgr)
-    {
+
+    if (_pCachedDocMgr) {
+        *ppdim = _pCachedDocMgr;
+        (*ppdim)->AddRef(); // Must increment COM ref count when handing out pointers
+        return S_OK;
+    }
+    
+    // Fallback just in case, but we want to avoid relying on this
+    if (_pIME && _pIME->_pThreadMgr) {
         return _pIME->_pThreadMgr->GetFocus(ppdim);
     }
-    return S_OK;
+    
+    return E_FAIL; // Tell TSF clearly if no context exists yet
 }
-
+void CTCodeCandidateListUI::SetDocumentMgr(ITfDocumentMgr* pDocMgr) {
+    if (_pCachedDocMgr) {
+        _pCachedDocMgr->Release();
+    }
+    _pCachedDocMgr = pDocMgr;
+    if (_pCachedDocMgr) {
+        _pCachedDocMgr->AddRef();
+    }
+}
 STDMETHODIMP CTCodeCandidateListUI::GetCount(UINT* puCount)
 {
     if (!puCount) return E_INVALIDARG;
@@ -288,4 +338,31 @@ void CTCodeCandidateListUI::ClearCandidates()
 
 HWND CTCodeCandidateListUI::GetHWND() const {
     return _hCandidateWnd;
+}
+
+HINSTANCE GetCurrentModuleInstance() {
+    HINSTANCE hInst = NULL;
+    GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCWSTR)&GetCurrentModuleInstance, 
+        &hInst
+    );
+    return hInst;
+}
+
+void RegisterGlobalCandidateClass() {
+    WNDCLASSEXW wc = {0};
+    wc.cbSize = sizeof(WNDCLASSEXW);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    // The compiler knows exactly what this is now because it's inside this file!
+    wc.lpfnWndProc = CTCodeCandidateListUI::CandidateWndProc; 
+    wc.hInstance = GetCurrentModuleInstance(); 
+    wc.lpszClassName = L"TCodeCandidateWindowClassName";
+    wc.hbrBackground = (HBRUSH)::GetStockObject(WHITE_BRUSH);
+
+    RegisterClassExW(&wc);
+}
+
+void UnregisterGlobalCandidateClass() {
+    UnregisterClassW(L"TCodeCandidateWindowClassName", GetCurrentModuleInstance());
 }

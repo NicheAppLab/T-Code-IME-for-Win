@@ -16,150 +16,8 @@
 #include <msctf.h>
 #include <atlbase.h> // Required for CComPtr
 #include <string>
+#include "EditSession.h"
 
-class CManageCompositionEditSession : public ITfEditSession {
-public:
-    CManageCompositionEditSession(CTCodeIME* pIME, ITfContext* pContext, const std::wstring& committed, const std::wstring& composition) 
-        : _cRef(1), _pIME(pIME), _pContext(pContext), _committed(committed), _composition(composition) 
-    {
-        if (_pContext) _pContext->AddRef();
-        if (_pIME) _pIME->AddRef(); // Maintain reference parity for the IME instance
-    }
-
-    ~CManageCompositionEditSession() {
-        if (_pContext) _pContext->Release();
-        if (_pIME) _pIME->Release();
-    }
-
-    STDMETHODIMP QueryInterface(REFIID riid, void** ppvObj) {
-        if (!ppvObj) return E_INVALIDARG;
-        *ppvObj = nullptr;
-
-        if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfEditSession)) {
-            *ppvObj = this;
-            AddRef();
-            return S_OK;
-        }
-        return E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef() { 
-        return InterlockedIncrement(&_cRef); 
-    }
-
-    STDMETHODIMP_(ULONG) Release() { 
-        ULONG res = InterlockedDecrement(&_cRef);
-        if (res == 0) delete this;
-        return res; 
-    }
-
-    STDMETHODIMP DoEditSession(TfEditCookie ec) {
-        // 1. Handle Committed Text
-        if (!_committed.empty()) {
-            ITfRange* pRange = nullptr;
-            if (_pIME->_pComposition) {
-                _pIME->_pComposition->GetRange(&pRange);
-            } else {
-                TF_SELECTION sel;
-                ULONG cFetched;
-                if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0) {
-                    pRange = sel.range; 
-                }
-            }
-
-            if (pRange) {
-                pRange->SetText(ec, 0, _committed.c_str(), (ULONG)_committed.length());
-                if (_pIME->_pComposition) {
-                    _pIME->_pComposition->EndComposition(ec);
-                    _pIME->_pComposition->Release();
-                    _pIME->_pComposition = nullptr;
-                }
-                
-                TF_SELECTION sel;
-                sel.range = pRange;
-                sel.range->Collapse(ec, TF_ANCHOR_END);
-                sel.style.ase = TF_AE_NONE;
-                sel.style.fInterimChar = FALSE;
-                _pContext->SetSelection(ec, 1, &sel);
-                pRange->Release();
-            }
-        }
-
-        // 2. Handle Composition Text
-        if (!_composition.empty()) {
-            if (!_pIME->_pComposition) {
-                ITfContextComposition* pContextComposition;
-                if (_pContext->QueryInterface(IID_ITfContextComposition, (void**)&pContextComposition) == S_OK) {
-                    TF_SELECTION sel;
-                    ULONG cFetched;
-                    if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0) {
-                        pContextComposition->StartComposition(ec, sel.range, _pIME, &_pIME->_pComposition);
-                        sel.range->Release();
-                    }
-                    pContextComposition->Release();
-                }
-            }
-
-            if (_pIME->_pComposition) {
-                ITfRange* pRange;
-                if (_pIME->_pComposition->GetRange(&pRange) == S_OK) {
-                    pRange->SetText(ec, 0, _composition.c_str(), (ULONG)_composition.length());
-                    pRange->Release();
-                }
-            }
-        } else if (_pIME->_pComposition) {
-            ITfRange* pRange;
-            if (_pIME->_pComposition->GetRange(&pRange) == S_OK) {
-                pRange->SetText(ec, 0, nullptr, 0);
-                pRange->Release();
-            }
-            _pIME->_pComposition->EndComposition(ec);
-            _pIME->_pComposition->Release();
-            _pIME->_pComposition = nullptr;
-        }
-
-        // 3. Update Positioning Layout Controls
-        if (_pIME->_pComposition && _pIME->_pCandidateList && _pIME->_dwCandidateListUIElementId != TF_INVALID_UIELEMENTID) {
-            CComPtr<ITfContextView> pContextView;
-            if (SUCCEEDED(_pContext->GetActiveView(&pContextView)) && pContextView) {
-                ITfRange* pRange = nullptr;
-                if (SUCCEEDED(_pIME->_pComposition->GetRange(&pRange)) && pRange) {
-                    RECT rcText = {0};
-                    BOOL fClipped = FALSE;
-                    
-                    if (SUCCEEDED(pContextView->GetTextExt(ec, pRange, &rcText, &fClipped))) {
-                        HWND hCandidateWnd = _pIME->_pCandidateList->GetHWND();
-                        if (hCandidateWnd) {
-                            // 1. Move the window to the correct location while it is still HIDDEN.
-                            // Notice SWP_HIDEWINDOW is NOT used; we use standard flags without SWP_SHOWWINDOW.
-                            ::SetWindowPos(hCandidateWnd, HWND_TOPMOST, 
-                                        rcText.left, rcText.bottom, 
-                                        0, 0, 
-                                        SWP_NOSIZE | SWP_NOACTIVATE);
-
-                            // 2. Now that it is safely sitting under the caret, reveal it to the user.
-                            // This bypasses the (0,0) rendering lifecycle entirely.
-                            if (_pIME->_pCandidateList->IsShown()) { // Make sure TSF wants it visible
-                                ::ShowWindow(hCandidateWnd, SW_SHOWNA);
-                                ::InvalidateRect(hCandidateWnd, NULL, TRUE);
-                            }
-                        }
-                    }
-                    pRange->Release();
-                }
-            }
-        }
-
-        return S_OK; // <-- FIXED: Safely placed outside all blocks so it always runs
-    }
-
-private:
-    LONG _cRef;
-    CTCodeIME* _pIME;
-    ITfContext* _pContext;
-    std::wstring _committed;
-    std::wstring _composition;
-};
 
 CTCodeIME::CTCodeIME()
     : _cRef(1), _pThreadMgr(nullptr), _tfClientId(TF_CLIENTID_NULL), _pIPCClient(nullptr), _pComposition(nullptr),
@@ -183,7 +41,12 @@ STDMETHODIMP CTCodeIME::QueryInterface(REFIID riid, void** ppvObj) {
         *ppvObj = static_cast<ITfCompositionSink*>(this);
     } else if (IsEqualIID(riid, IID_ITfCompartmentEventSink)) {
         *ppvObj = static_cast<ITfCompartmentEventSink*>(this);
+    } else if (IsEqualIID(riid, IID_ITfTextLayoutSink)) {
+        *ppvObj = static_cast<ITfTextLayoutSink*>(this);
+    } else if (IsEqualIID(riid, IID_ITfThreadFocusSink)) {
+        *ppvObj = static_cast<ITfThreadFocusSink*>(this);
     }
+
     if (*ppvObj) { AddRef(); return S_OK; }
 
     return E_NOINTERFACE;
@@ -236,6 +99,20 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
     // Initialize compartment event sinks to track open/close and conversion mode changes
     _InitCompartmentEventSink();
 
+    CComPtr<ITfSource> pSource;
+    if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pSource))) && pSource) {
+        pSource->AdviseSink(IID_ITfThreadFocusSink, static_cast<ITfThreadFocusSink*>(this), &_dwThreadFocusSinkCookie);
+    }
+
+    // Run an initial manual setup block for the startup window state
+    CComPtr<ITfDocumentMgr> pDocMgr;
+    if (SUCCEEDED(_pThreadMgr->GetFocus(&pDocMgr)) && pDocMgr) {
+        CComPtr<ITfContext> pContext;
+        if (SUCCEEDED(pDocMgr->GetTop(&pContext)) && pContext) {
+            InitContextSink(pContext);
+        }
+    }
+
     SetInputMode(InputMode::Direct);
 
     // Return S_OK as long as the keystroke sink was installed successfully.
@@ -244,7 +121,23 @@ STDMETHODIMP CTCodeIME::ActivateEx(ITfThreadMgr *ptim, TfClientId tid, DWORD dwF
 }
 
 // Deactivate: remove mode button and brand button from language bar and release resources
-STDMETHODIMP CTCodeIME::Deactivate() { 
+STDMETHODIMP CTCodeIME::Deactivate() {
+    if (_dwThreadFocusSinkCookie != 0 && _pThreadMgr) {
+        CComPtr<ITfSource> pSource;
+        if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pSource))) && pSource) {
+            pSource->UnadviseSink(_dwThreadFocusSinkCookie);
+            _dwThreadFocusSinkCookie = 0;
+        }
+    }
+
+    // Clean up your layout sink on the current focused text field
+    CComPtr<ITfDocumentMgr> pDocMgr;
+    if (_pThreadMgr && SUCCEEDED(_pThreadMgr->GetFocus(&pDocMgr)) && pDocMgr) {
+        CComPtr<ITfContext> pContext;
+        if (SUCCEEDED(pDocMgr->GetTop(&pContext)) && pContext) {
+            UninitContextSink(pContext);
+        }
+    }
     if (_pThreadMgr) { 
         // Unadvise compartment event sinks
         _UninitCompartmentEventSink();
@@ -476,12 +369,7 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam,
         HRESULT hr;
         pic->RequestEditSession(_tfClientId, pEditSession, TF_ES_READWRITE | TF_ES_SYNC, &hr);
         pEditSession->Release();
-        // After committed text has been sent to the application, reset the IPC client
-        // so that lastResponse reflects the cleared engine state. This ensures subsequent
-        // Backspace checks in OnTestKeyDown/OnKeyDown work correctly.
-        if (!committed.empty()) {
-            _pIPCClient->Reset();
-        }
+
         SyncCandidateListFromIPC();
         return S_OK;
     }
@@ -589,6 +477,15 @@ void CTCodeIME::ToggleInputMode() {
 void CTCodeIME::UpdateCandidateList(const std::vector<std::wstring>& candidates, int selectedIndex) {
     if (!_pThreadMgr || !_pCandidateList) return;
 
+    CComPtr<ITfDocumentMgr> pDocMgr;
+    if (FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || !pDocMgr) return;
+
+    // ==========================================
+    // CRUCIAL CHANGE: GetBase instead of GetTop!
+    // ==========================================
+    CComPtr<ITfContext> pContext;
+    if (FAILED(pDocMgr->GetTop(&pContext)) || !pContext) return;
+
     CComPtr<ITfUIElementMgr> pUIElementMgr;
     if (FAILED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pUIElementMgr))) || !pUIElementMgr) return;
 
@@ -640,16 +537,131 @@ void CTCodeIME::SyncCandidateListFromIPC() {
     }
 }
 
-// HideCandidateList: hide and end the candidate list UI element
 void CTCodeIME::HideCandidateList() {
-    _pCandidateList->Show(FALSE); // Close window frame
-    
+    // 1. Physically hide your custom Win32 window frame
+    if (_pCandidateList) {
+        _pCandidateList->Show(FALSE); 
+    }
+    // 2. Clear out the TSF UI Element lifecycle sequence
     if (_dwCandidateListUIElementId != TF_INVALID_UIELEMENTID) {
         CComPtr<ITfUIElementMgr> pUIElementMgr;
         if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_PPV_ARGS(&pUIElementMgr))) && pUIElementMgr) {
-            // Tell TSF this UI element sequence is dead
             pUIElementMgr->EndUIElement(_dwCandidateListUIElementId);
         }
-        _dwCandidateListUIElementId = TF_INVALID_UIELEMENTID; // Reset token
+        _dwCandidateListUIElementId = TF_INVALID_UIELEMENTID; // Reset the token identifier
     }
+
+    if (_pCandidateList) {
+        _pCandidateList->SetDocumentMgr(nullptr); 
+    }
+}
+
+// layout sink
+STDMETHODIMP CTCodeIME::OnLayoutChange(ITfContext* pContext, TfLayoutCode lcode, ITfContextView* pView) {
+    ::OutputDebugStringW(L"--> TSF Layout Change Fired!");
+    // We only care if our candidate list is active and currently visible
+    if (_dwCandidateListUIElementId != TF_INVALID_UIELEMENTID && _pCandidateList && _pCandidateList->IsShown()) {
+        
+        // TF_LC_CHANGE indicates the window layout, position, or view boundary shifted
+        if (lcode == TF_LC_CHANGE) {
+            TriggerPositionUpdate(); 
+        }
+    }
+    return S_OK;
+}
+
+void CTCodeIME::InitContextSink(ITfContext* pContext) {
+    if (!pContext) return;
+    if (_dwTextLayoutSinkCookie != 0) return; // Guard against double registration
+
+    // 1. Explicitly fetch the Context View from the current active context
+    CComPtr<ITfContextView> pContextView;
+    if (SUCCEEDED(pContext->GetActiveView(&pContextView)) && pContextView) {
+        
+        // 2. Query ITfSource specifically from the VIEW, or directly from the strict Context interface.
+        // To be absolutely certain we are bypassing the parent Document Manager wrapper, 
+        // cast the context explicitly to an ITfSource:
+        CComPtr<ITfSource> pSource;
+        if (SUCCEEDED(pContext->QueryInterface(IID_ITfSource, (void**)&pSource)) && pSource) {
+            // ============================================================
+            // THE FIX: Break the multiple-inheritance pointer ambiguity.
+            // Explicitly extract the layout-specific vtable offset 
+            // and convert it into a generic IUnknown* before passing it out.
+            // ============================================================
+            ITfTextLayoutSink* pLayoutSink = static_cast<ITfTextLayoutSink*>(this);
+            IUnknown* pUnkSink = static_cast<IUnknown*>(pLayoutSink);
+                // 3. Advise the layout sink
+            HRESULT hr = pSource->AdviseSink(IID_ITfTextLayoutSink, pUnkSink, &_dwTextLayoutSinkCookie);
+            
+            if (SUCCEEDED(hr)) {
+                ::OutputDebugStringW(L"--> InitContextSink SUCCESS: Registered ITfTextLayoutSink!\n");
+            } else {
+                wchar_t szLog[128];
+                swprintf_s(szLog, L"--> InitContextSink FAILED: AdviseSink returned 0x%08X\n", hr);
+                ::OutputDebugStringW(szLog);
+            }
+        }
+    }
+}
+void CTCodeIME::UninitContextSink(ITfContext* pContext) {
+    if (_dwTextLayoutSinkCookie != 0 && pContext) {
+        CComPtr<ITfSource> pSource;
+        if (SUCCEEDED(pContext->QueryInterface(IID_PPV_ARGS(&pSource))) && pSource) {
+            
+            HRESULT hr = pSource->UnadviseSink(_dwTextLayoutSinkCookie);
+            
+            if (SUCCEEDED(hr)) {
+                ::OutputDebugStringW(L"--> UninitContextSink SUCCESS: Unregistered Cookie\n");
+            }
+        }
+        _dwTextLayoutSinkCookie = 0; // Explicitly reset to zero so it can be reused later
+    }
+}
+
+void CTCodeIME::TriggerPositionUpdate() {
+    if (!_pThreadMgr || !_pCandidateList) return;
+
+    // 1. Get the current active document context manager
+    CComPtr<ITfDocumentMgr> pDocMgr;
+    if (FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || !pDocMgr) return;
+
+    // 2. Extract the top-most active text context layer
+    CComPtr<ITfContext> pContext;
+    if (FAILED(pDocMgr->GetTop(&pContext)) || !pContext) return;
+
+    // 3. Use our lightweight, layout-only session class
+    CComPtr<CTrackLayoutEditSession> pLayoutSession;
+    pLayoutSession.Attach(new CTrackLayoutEditSession(this, pContext));
+    
+    if (pLayoutSession) {
+        HRESULT hrSession = S_OK;
+        
+        // 4. FIXED: Request the lock using 'pLayoutSession' instead of '_pEditSession'
+        pContext->RequestEditSession(_tfClientId, pLayoutSession, TF_ES_READ | TF_ES_SYNC, &hrSession);
+    }
+}
+
+STDMETHODIMP CTCodeIME::OnSetThreadFocus() {
+    if (!_pThreadMgr) return S_OK;
+
+    // 1. Fetch the document manager that just stabilized focus
+    CComPtr<ITfDocumentMgr> pDocMgr;
+    if (SUCCEEDED(_pThreadMgr->GetFocus(&pDocMgr)) && pDocMgr) {
+        
+        CComPtr<ITfContext> pContext;
+        if (SUCCEEDED(pDocMgr->GetTop(&pContext)) && pContext) {
+            
+            // 2. Clear any stale trackers from old windows
+            UninitContextSink(pContext);
+            
+            // 3. Bind your layout tracker directly to the fresh context layer
+            InitContextSink(pContext);
+        }
+    }
+    return S_OK;
+}
+
+STDMETHODIMP CTCodeIME::OnKillThreadFocus() {
+    // No specific action required, focus handoff cleans itself up
+    return S_OK;
 }

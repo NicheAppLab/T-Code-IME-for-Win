@@ -14,7 +14,9 @@ enum class InputMode;
 class CTCodeIME : public ITfTextInputProcessorEx,
                   public ITfKeyEventSink,
                   public ITfCompositionSink,
-                  public ITfCompartmentEventSink
+                  public ITfCompartmentEventSink,
+                  public ITfTextLayoutSink,
+                  public ITfThreadFocusSink
 {
 public:
     CTCodeIME();
@@ -68,6 +70,13 @@ public:
     void HideCandidateList();
     void SyncCandidateListFromIPC();
 
+    // Text layout sink
+    STDMETHODIMP OnLayoutChange(ITfContext* pContext, TfLayoutCode lcode, ITfContextView* pView) override;
+
+    // Thread Focus Sink
+    STDMETHODIMP OnSetThreadFocus() override;
+    STDMETHODIMP OnKillThreadFocus() override;
+
     // Internal helpers
     BOOL _InitCompartmentEventSink();
     void _UninitCompartmentEventSink();
@@ -90,7 +99,13 @@ private:
 
     friend class CManageCompositionEditSession;
     friend class CTCodeCandidateListUI;
+    friend class CTrackLayoutEditSession;
 
+    DWORD _dwTextLayoutSinkCookie = 0;
+    DWORD _dwThreadFocusSinkCookie = 0;
+    void CTCodeIME::UninitContextSink(ITfContext* pContext);
+    void CTCodeIME::InitContextSink(ITfContext* pContext);
+    void TriggerPositionUpdate();
 };
 
 

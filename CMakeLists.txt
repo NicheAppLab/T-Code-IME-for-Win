@@ -1,7 +1,7 @@
 # CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.20)
-project(TCodeIMEForWin VERSION 0.2.0.0 LANGUAGES CXX)
+project(TCodeIMEForWin VERSION 0.2.1.0 LANGUAGES CXX)
 
 # -----------------------------------------------------------------------------
 # Architecture support: x64 (64-bit), Win32 (32-bit x86), or ARM64
@@ -86,6 +86,7 @@ set(IME_SRC_FILES
     src/Registry.cpp
     src/EngineClient.cpp
     src/TCodeIME.rc
+    src/EditSession.cpp
 )
 add_library(TCodeIME SHARED ${IME_SRC_FILES})
 
@@ -396,15 +397,18 @@ option(BUILD_WINGET_MANIFESTS "Build the winget-pkgs manifest files" ON)
 
 if(BUILD_WINGET_MANIFESTS)
     set(WINGET_VERSION_DIR "${CMAKE_CURRENT_SOURCE_DIR}/winget/manifests/n/NicheAppLab/T-CodeIME/${PROJECT_VERSION}")
+    set(WINGET_VERSION_DIR_JRE "${CMAKE_CURRENT_SOURCE_DIR}/winget/manifests/n/NicheAppLab/T-CodeIME-JRE/${PROJECT_VERSION}")
     set(WINGET_INSTALLER_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/installer/output")
 
     # Compute SHA256 for each architecture installer
     set(WINGET_SHA256_X86 "")
     set(WINGET_SHA256_X64 "")
+    set(WINGET_SHA256_X64_JRE "")
     set(WINGET_SHA256_ARM64 "")
 
     set(INSTALLER_X86 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_x86.exe")
     set(INSTALLER_X64 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_x64.exe")
+    set(INSTALLER_X64_JRE "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_x64_jre.exe")
     set(INSTALLER_ARM64 "${WINGET_INSTALLER_OUTPUT_DIR}/NicheAppLab.TCodeIME_${PROJECT_VERSION}_arm64.exe")
 
     if(EXISTS "${INSTALLER_X86}")
@@ -423,6 +427,14 @@ if(BUILD_WINGET_MANIFESTS)
         message(STATUS "Winget: x64 installer not found at ${INSTALLER_X64} — SHA256 will be empty")
     endif()
 
+    if(EXISTS "${INSTALLER_X64_JRE}")
+        file(SHA256 "${INSTALLER_X64_JRE}" WINGET_SHA256_X64_JRE)
+        string(TOUPPER "${WINGET_SHA256_X64_JRE}" WINGET_SHA256_X64_JRE)
+        message(STATUS "Winget SHA256(x64_jre) = ${WINGET_SHA256_X64_JRE}")
+    else()
+        message(STATUS "Winget: x64_jre installer not found at ${INSTALLER_X64_JRE} — SHA256 will be empty")
+    endif()
+
     if(EXISTS "${INSTALLER_ARM64}")
         file(SHA256 "${INSTALLER_ARM64}" WINGET_SHA256_ARM64)
         string(TOUPPER "${WINGET_SHA256_ARM64}" WINGET_SHA256_ARM64)
@@ -431,7 +443,7 @@ if(BUILD_WINGET_MANIFESTS)
         message(STATUS "Winget: arm64 installer not found at ${INSTALLER_ARM64} — SHA256 will be empty")
     endif()
 
-    # Generate each manifest from its template
+    # Generate each manifest from its template (T-CodeIME)
     set(WINGET_TEMPLATES
         "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.installer.yaml.in"
         "${WINGET_VERSION_DIR}/NicheAppLab.T-CodeIME.locale.ja-JP.yaml.in"
@@ -451,6 +463,28 @@ if(BUILD_WINGET_MANIFESTS)
         string(REPLACE "@WINGET_SHA256_X86@" "${WINGET_SHA256_X86}" CONTENT "${CONTENT}")
         string(REPLACE "@WINGET_SHA256_X64@" "${WINGET_SHA256_X64}" CONTENT "${CONTENT}")
         string(REPLACE "@WINGET_SHA256_ARM64@" "${WINGET_SHA256_ARM64}" CONTENT "${CONTENT}")
+        file(WRITE "${OUTPUT_FILE}" "${CONTENT}")
+        message(STATUS "Generated winget manifest: ${OUTPUT_FILE}")
+    endforeach()
+
+    # Generate each manifest from its template (T-CodeIME-JRE)
+    set(WINGET_TEMPLATES_JRE
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.installer.yaml.in"
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.locale.ja-JP.yaml.in"
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.yaml.in"
+    )
+    set(WINGET_OUTPUTS_JRE
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.installer.yaml"
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.locale.ja-JP.yaml"
+        "${WINGET_VERSION_DIR_JRE}/NicheAppLab.T-CodeIME-JRE.yaml"
+    )
+
+    foreach(idx RANGE 2)
+        list(GET WINGET_TEMPLATES_JRE ${idx} TEMPLATE_FILE)
+        list(GET WINGET_OUTPUTS_JRE ${idx} OUTPUT_FILE)
+        file(READ "${TEMPLATE_FILE}" CONTENT)
+        string(REPLACE "@PROJECT_VERSION@" "${PROJECT_VERSION}" CONTENT "${CONTENT}")
+        string(REPLACE "@WINGET_SHA256_X64_JRE@" "${WINGET_SHA256_X64_JRE}" CONTENT "${CONTENT}")
         file(WRITE "${OUTPUT_FILE}" "${CONTENT}")
         message(STATUS "Generated winget manifest: ${OUTPUT_FILE}")
     endforeach()

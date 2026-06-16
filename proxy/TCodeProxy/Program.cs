@@ -239,20 +239,6 @@ class Program
         trayThread.Start();
         trayThreadStarted.Wait();
 
-        // UI thread for Status Window disabled to avoid deadlocks
-// var uiThread = new Thread(() => {
-//     try {
-//         _statusWindow = new StatusWindow();
-//         // Run the message loop for the status window
-//         Application.Run(_statusWindow);
-//     } catch (Exception ex) {
-//         Console.WriteLine($"[Proxy-UI]: Error in UI Thread: {ex.Message}");
-//     }
-// });
-// uiThread.SetApartmentState(ApartmentState.STA);
-// uiThread.IsBackground = true; // Do not block process exit
-// uiThread.Start();
-
         // Setup Job Object for automatic cleanup
         _hJob = CreateJobObject(IntPtr.Zero, "TCodeEngineJob");
         var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
