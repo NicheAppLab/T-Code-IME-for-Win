@@ -42,31 +42,25 @@
       "name": "artifacts-win32",
       "inherits": "base-build",
       "configurePreset": "win32",
-      "targets": ["BuildInnoInstaller", "BuildMsix"]
+      "targets": ["BuildInnoInstaller"]
     },
     {
       "name": "artifacts-x64",
       "inherits": "base-build",
       "configurePreset": "x64",
-      "targets": ["BuildInnoInstaller", "BuildMsix"]
+      "targets": ["BuildInnoInstaller"]
     },
     {
       "name": "artifacts-x64-java-runtime",
       "inherits": "base-build",
       "configurePreset": "x64-java-runtime",
-      "targets": ["BuildInnoInstaller", "BuildMsix"]
+      "targets": ["BuildInnoInstaller"]
     },
     {
       "name": "artifacts-arm64",
       "inherits": "base-build",
       "configurePreset": "arm64",
-      "targets": ["BuildInnoInstaller", "BuildMsix"]
-    },
-    {
-      "name": "bundle-msix",
-      "inherits": "base-build",
-      "configurePreset": "x64",
-      "targets": ["BuildMsixBundle"]
+      "targets": ["BuildInnoInstaller"]
     },
     {
       "name": "winget",
