@@ -227,6 +227,7 @@ if(BUILD_INSTALLER)
                 "/DTCodeArch=${TCODE_ARCH}"
                 "/DTCodeIMEDllPath=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/$<CONFIG>/TCodeIME.dll"
                 "/DTCodeProxyBinDir=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/proxy"
+                ${TCODE_BUNDLE_JRE_DEFINE}
                 "/DJreSuffix=${INNO_JRE_SUFFIX}"
                 "/DTCODE_JRE_DIR=${TCODE_JRE_DIR}"
                 "/DTCodeEngineDir=${TCODE_ENGINE_DIR}"
