@@ -286,7 +286,10 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
 
     if (wParam == VK_SPACE)
     {
-        if (m_pCEngineClient->GetBuffer().empty())
+        if(m_pCEngineClient->HasCandidates()){
+            *pfEaten = TRUE;
+            return S_OK;
+        } else if (m_pCEngineClient->GetBuffer().empty())
         {
             *pfEaten = FALSE;
             return S_OK;
@@ -335,7 +338,6 @@ STDMETHODIMP CTCodeIME::OnTestKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lPa
         *pfEaten = TRUE;
         return S_OK;
     }
-
     *pfEaten = FALSE;
     return S_OK;
 }
@@ -507,11 +509,13 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
     }
 
     // Space: send to Engine only if engine has active buffer characters (to convert/select candidate)
-    if (wParam == VK_SPACE)
-    {
-        // 💡 FIX: Negate the check so it runs when the buffer HAS text (!IsBufferEmpty())
-        if (!m_pCEngineClient->IsBufferEmpty())
-        {
+    if (wParam == VK_SPACE) {
+        if (m_pCEngineClient->HasCandidates()){
+            *pfEaten = TRUE;
+            m_selectedIndex++;
+            SyncCandidateList();
+            return S_OK;
+        } else if (!m_pCEngineClient->IsBufferEmpty()) {
             *pfEaten = TRUE;
             m_pCEngineClient->ExecuteCommand(EngineCommand::Convert);
             std::wstring committed = m_pCEngineClient->GetOutputBuffer();
@@ -524,9 +528,7 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
                 pic->RequestEditSession(_tfClientId, pEditSession, TF_ES_READWRITE | TF_ES_SYNC, &hr);
                 pEditSession->Release();
             }
-        }
-        else
-        {
+        } else {
             // Engine is completely idle — pass Space through so the host app types a normal space character
             *pfEaten = FALSE;
         }
@@ -537,47 +539,60 @@ STDMETHODIMP CTCodeIME::OnKeyDown(ITfContext *pic, WPARAM wParam, LPARAM lParam,
     }
 
     // Left/Right: send to IPC only if engine has buffer (to change inflex position)
-    if (wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_UP || wParam == VK_DOWN)
-    {
-        if (m_pCEngineClient->HasCandidates())
-        {
+if (wParam == VK_LEFT || wParam == VK_RIGHT || wParam == VK_UP || wParam == VK_DOWN || wParam == VK_NEXT || wParam == VK_PRIOR) {
+    if (m_pCEngineClient->HasCandidates()) {
+        *pfEaten = TRUE;
+
+        // 1. Get the total number of candidates to safely enforce boundaries
+        size_t totalCandidates = m_pCEngineClient->GetCandidates().size();
+
+        if (wParam == VK_DOWN || wParam == VK_RIGHT) {
+            m_selectedIndex++;
+        } 
+        else if (wParam == VK_UP || wParam == VK_LEFT) {
+            m_selectedIndex--;
+        }
+        else if (wParam == VK_NEXT) {
+            // Page Down: Advance index by a full page size (9)
+            m_selectedIndex += 9;
+        }
+        else if (wParam == VK_PRIOR) {
+            // Page Up: Move index back by a full page size (9)
+            m_selectedIndex -= 9;
+        }
+
+        // 2. Bound checking: Protect your index bounds against crashes or off-screen states
+        if (m_selectedIndex < 0) {
+            m_selectedIndex = 0; // Don't let PageUp fall below the first candidate
+        }
+        if (totalCandidates > 0 && m_selectedIndex >= static_cast<int>(totalCandidates)) {
+            m_selectedIndex = static_cast<int>(totalCandidates) - 1; // Don't let PageDown overshoot the final item
+        }
+
+        SyncCandidateList();
+        return S_OK;
+    } 
+    else if (!m_pCEngineClient->IsBufferEmpty()) {
+        if (wParam == VK_LEFT || wParam == VK_RIGHT) {
             *pfEaten = TRUE;
-            if (wParam == VK_DOWN || wParam == VK_RIGHT)
-            {
-                m_selectedIndex++;
+            EngineCommand command = (wParam == VK_LEFT) ? EngineCommand::Left : EngineCommand::Right;
+            m_pCEngineClient->ExecuteCommand(command);
+            std::wstring composition = m_pCEngineClient->GetBuffer();
+            std::wstring committed = m_pCEngineClient->GetOutputBuffer() + m_pCEngineClient->GetLastKey();
+
+            CManageCompositionEditSession *pEditSession = new CManageCompositionEditSession(this, pic, committed, composition);
+            if (pEditSession) {
+                HRESULT hr;
+                pic->RequestEditSession(_tfClientId, pEditSession, TF_ES_READWRITE | TF_ES_SYNC, &hr);
+                pEditSession->Release();
             }
-            else
-            {
-                m_selectedIndex--;
-            }
-            SyncCandidateList();
             return S_OK;
         }
-        else if (!m_pCEngineClient->IsBufferEmpty())
-        {
-            if (wParam == VK_LEFT || wParam == VK_RIGHT)
-            {
-                *pfEaten = TRUE;
-
-                EngineCommand command = (wParam == VK_LEFT) ? EngineCommand::Left : EngineCommand::Right;
-                m_pCEngineClient->ExecuteCommand(command);
-                std::wstring composition = m_pCEngineClient->GetBuffer();
-                std::wstring committed = m_pCEngineClient->GetOutputBuffer() + m_pCEngineClient->GetLastKey();
-
-                // Update the text view container layout under active TSF context ranges
-                CManageCompositionEditSession *pEditSession = new CManageCompositionEditSession(this, pic, committed, composition);
-                if (pEditSession)
-                {
-                    HRESULT hr;
-                    pic->RequestEditSession(_tfClientId, pEditSession, TF_ES_READWRITE | TF_ES_SYNC, &hr);
-                    pEditSession->Release();
-                }
-                return S_OK;
-            }
-        }
-        *pfEaten = FALSE;
-        return S_OK;
     }
+    *pfEaten = FALSE;
+    return S_OK;
+}
+
 
     // Return: send Select(index) to fetch selection, then call Commit() to flush output to the app
     if (wParam == VK_RETURN)

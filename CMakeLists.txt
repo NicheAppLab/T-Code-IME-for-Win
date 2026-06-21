@@ -18,19 +18,35 @@ project(TCodeIMEForWin VERSION 0.3.0.0 LANGUAGES CXX)
 #
 # The generator platform is set via -A on the cmake command line.
 # We derive a short arch tag for output directories and installer use.
-if(CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
+
+# 1. Detect target architecture reliably across presets
+if(CMAKE_VS_PLATFORM_NAME)
+    string(TOLOWER "${CMAKE_VS_PLATFORM_NAME}" TCODE_ARCH_RAW)
+else()
+    string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" TCODE_ARCH_RAW)
+endif()
+
+# 2. Normalize architecture identifiers
+if(TCODE_ARCH_RAW STREQUAL "win32" OR TCODE_ARCH_RAW STREQUAL "x86")
     set(TCODE_ARCH "x86")
     set(TCODE_ARCH_MSIX "x86")
-elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+elseif(TCODE_ARCH_RAW STREQUAL "arm64")
     set(TCODE_ARCH "arm64")
     set(TCODE_ARCH_MSIX "arm64")
 else()
-    # Default to x64 if not specified or if platform is empty
     set(TCODE_ARCH "x64")
     set(TCODE_ARCH_MSIX "x64")
 endif()
-# Plain arch (no JRE suffix) for build output paths; may be updated if bundling JRE
+
+# 3. Synchronize internal path mapping variable
 set(TCODE_ARCH_PLAIN "${TCODE_ARCH}")
+
+# 4. Handle JRE filename suffix condition
+if(TCODE_BUNDLE_JRE)
+    set(INNO_JRE_SUFFIX "_jre")
+else()
+    set(INNO_JRE_SUFFIX "")
+endif()
 
 message(STATUS "Target architecture: ${TCODE_ARCH} (CMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM})")
 
@@ -177,9 +193,7 @@ if(TCODE_BUNDLE_JRE)
     set(TCODE_BUNDLE_JRE_DEFINE "/DTCODEBundleJre=1")
     set(TCODE_JRE_DIR "${TCODE_JRE_OUTPUT_DIR}")
     set(TCODE_ENGINE_DIR "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/engine")
-    # Save original arch for build output paths, then append JRE suffix for filenames
     set(TCODE_ARCH_PLAIN "${TCODE_ARCH}")
-    set(TCODE_ARCH "${TCODE_ARCH}_jre")
 else()
     set(TCODE_JRE_DEPENDS "")
     set(TCODE_BUNDLE_JRE_DEFINE "")
@@ -213,7 +227,7 @@ if(BUILD_INSTALLER)
                 "/DTCodeArch=${TCODE_ARCH}"
                 "/DTCodeIMEDllPath=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/$<CONFIG>/TCodeIME.dll"
                 "/DTCodeProxyBinDir=${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH_PLAIN}/proxy"
-                ${TCODE_BUNDLE_JRE_DEFINE}
+                "/DJreSuffix=${INNO_JRE_SUFFIX}"
                 "/DTCODE_JRE_DIR=${TCODE_JRE_DIR}"
                 "/DTCodeEngineDir=${TCODE_ENGINE_DIR}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/installer/TCodeIMEInstaller.iss"

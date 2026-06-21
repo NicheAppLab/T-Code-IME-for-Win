@@ -10,6 +10,10 @@
 #define TCodeArch "x64"
 #endif
 
+#ifndef JreSuffix
+  #define JreSuffix ""
+#endif
+
 [Setup]
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -19,7 +23,7 @@ DefaultGroupName={#MyAppName}
 AppId={{F7F2AE39-9C4D-4EFA-A8B2-9F1E6A7D0D2F}}
 DisableProgramGroupPage=yes
 OutputDir={#SourcePath}\installer\output
-OutputBaseFilename=NicheAppLab.TCodeIME_{#MyAppVersion}_{#TCodeArch}
+OutputBaseFilename=NicheAppLab.TCodeIME_{#MyAppVersion}_{#TCodeArch}{#JreSuffix}
 Compression=lzma2/ultra
 SolidCompression=yes
 PrivilegesRequired=admin
