@@ -81,11 +81,13 @@ STDMETHODIMP CTrackLayoutEditSession::DoEditSession(TfEditCookie ec)
 
         CComPtr<ITfRange> pRange;
         // Try getting the composition range first
-        if (FAILED(_pIME->_pComposition->GetRange(&pRange)) || !pRange) {
+        if (FAILED(_pIME->_pComposition->GetRange(&pRange)) || !pRange)
+        {
             // FALLBACK: If composition fails, grab the active selection caret range
             TF_SELECTION sel;
             ULONG cFetched = 0;
-            if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0) {
+            if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0)
+            {
                 pRange.Attach(sel.range); // Safely attach the raw selection range
             }
         }
@@ -224,45 +226,54 @@ STDMETHODIMP CManageCompositionEditSession::DoEditSession(TfEditCookie ec)
     }
 
     // 2. Handle Composition Text
-    if (!_composition.empty())
+    // Clear out the old composition layout entirely to prevent sticky/frozen states
+    if (_pIME->_pComposition)
     {
-        if (!_pIME->_pComposition)
+        ITfRange *pOldRange = nullptr;
+        if (SUCCEEDED(_pIME->_pComposition->GetRange(&pOldRange)) && pOldRange)
         {
-            ITfContextComposition *pContextComposition;
-            if (_pContext->QueryInterface(IID_ITfContextComposition, (void **)&pContextComposition) == S_OK)
-            {
-                TF_SELECTION sel;
-                ULONG cFetched;
-                if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0)
-                {
-                    pContextComposition->StartComposition(ec, sel.range, _pIME, &_pIME->_pComposition);
-                    sel.range->Release();
-                }
-                pContextComposition->Release();
-            }
-        }
-
-        if (_pIME->_pComposition)
-        {
-            ITfRange *pRange;
-            if (_pIME->_pComposition->GetRange(&pRange) == S_OK)
-            {
-                pRange->SetText(ec, 0, _composition.c_str(), (ULONG)_composition.length());
-                pRange->Release();
-            }
-        }
-    }
-    else if (_pIME->_pComposition)
-    {
-        ITfRange *pRange;
-        if (_pIME->_pComposition->GetRange(&pRange) == S_OK)
-        {
-            pRange->SetText(ec, 0, nullptr, 0);
-            pRange->Release();
+            pOldRange->SetText(ec, 0, nullptr, 0); // Wipe text out of the active window
+            pOldRange->Release();
         }
         _pIME->_pComposition->EndComposition(ec);
         _pIME->_pComposition->Release();
         _pIME->_pComposition = nullptr;
+    }
+
+    // If we still have characters left after backspacing, spin up a clean composition session
+    if (!_composition.empty())
+    {
+        ITfContextComposition *pContextComposition = nullptr;
+        if (SUCCEEDED(_pContext->QueryInterface(IID_ITfContextComposition, (void **)&pContextComposition)))
+        {
+            TF_SELECTION sel;
+            ULONG cFetched;
+            if (_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &cFetched) == S_OK && cFetched > 0)
+            {
+                // Start a completely fresh composition track
+                if (SUCCEEDED(pContextComposition->StartComposition(ec, sel.range, _pIME, &_pIME->_pComposition)))
+                {
+                    ITfRange *pNewRange = nullptr;
+                    if (SUCCEEDED(_pIME->_pComposition->GetRange(&pNewRange)) && pNewRange)
+                    {
+                        // Insert the fresh, shortened string
+                        pNewRange->SetText(ec, 0, _composition.c_str(), (ULONG)_composition.length());
+
+                        // Force the caret to snap to the end of the new composition frame
+                        TF_SELECTION newSel;
+                        newSel.range = pNewRange;
+                        newSel.range->Collapse(ec, TF_ANCHOR_END);
+                        newSel.style.ase = TF_AE_NONE;
+                        newSel.style.fInterimChar = FALSE;
+                        _pContext->SetSelection(ec, 1, &newSel);
+
+                        pNewRange->Release();
+                    }
+                }
+                sel.range->Release();
+            }
+            pContextComposition->Release();
+        }
     }
 
     // 3. Update Positioning Layout Controls

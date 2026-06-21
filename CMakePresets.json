@@ -7,15 +7,47 @@
       "hidden": true,
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
       }
     },
-    { "name": "win32", "inherits": "base-windows", "architecture": "Win32", "binaryDir": "${sourceDir}/build/win32" },
-    { "name": "x64",   "inherits": "base-windows", "architecture": "x64",   "binaryDir": "${sourceDir}/build/x64" },
+    {
+      "name": "win32",
+      "inherits": "base-windows",
+      "architecture": {
+        "value": "Win32",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build/win32"
+    },
+    {
+      "name": "x64",
+      "inherits": "base-windows",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build/x64"
+    },
     {
       "name": "x64-java-runtime",
       "inherits": "base-windows",
-      "architecture": "x64",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "external"
+      },
       "cacheVariables": {
         "TCODE_BUNDLE_JRE": "ON",
         "TCODE_JLINK_MODULES": "java.base,java.logging,java.sql,java.naming,java.management,java.xml,jdk.unsupported,jdk.zipfs,jdk.charsets,java.net.http,java.scripting,java.instrument,java.security.jgss,java.security.sasl,java.datatransfer,java.desktop,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.crypto.mscapi,jdk.localedata,jdk.management,jdk.management.agent,jdk.naming.dns,jdk.naming.rmi,jdk.sctp,jdk.security.auth,jdk.security.jgss"
@@ -25,7 +57,14 @@
     {
       "name": "arm64",
       "inherits": "base-windows",
-      "architecture": "ARM64",
+      "architecture": {
+        "value": "ARM64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "external"
+      },
       "cacheVariables": {
         "CMAKE_CXX_FLAGS": "/Qspectre /EHsc"
       },

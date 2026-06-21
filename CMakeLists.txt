@@ -61,7 +61,7 @@ set(PACKAGE_NAME "NicheAppLab.T-CodeIME")
 set(PUBLISHER_DN "CN=2BF2953C-66FF-4938-ACE4-42FB3950D28C")
 set(DISPLAY_NAME "T-Code IME")
 set(PUBLISHER_DISPLAY_NAME "Niche App Lab")
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Avoid building tests or examples for dependencies if any leak through
@@ -79,26 +79,33 @@ set(IME_SRC_FILES
     src/CTCodeModeButton.cpp
     src/CTCodeCandidateListUI.cpp
     src/Globals.cpp
-    src/IPCClient.cpp
-    src/PipeServer.cpp
     src/ProcessManager.cpp
-    src/ProxyMain.cpp
     src/Registry.cpp
     src/EngineClient.cpp
     src/TCodeIME.rc
     src/EditSession.cpp
+    src/GlazeModels.hpp
+    src/GlazeClient.hpp
 )
 add_library(TCodeIME SHARED ${IME_SRC_FILES})
 
-# Ensure C++17 features (including std::filesystem)
+# Ensure C++20 features (including std::filesystem)
 if (MSVC)
-    target_compile_options(TCodeIME PRIVATE /std:c++17)
+    target_compile_options(TCodeIME PRIVATE /std:c++latest)
+    target_compile_options(TCodeIME PRIVATE /Zc:preprocessor)
 endif()
 
-target_compile_features(TCodeIME PUBLIC cxx_std_17)
+if(WIN32)
+    target_link_libraries(TCodeIME PRIVATE ws2_32)
+endif()
+
+find_package(asio CONFIG REQUIRED)
+
+target_compile_features(TCodeIME PUBLIC cxx_std_20)
 
 target_include_directories(TCodeIME PRIVATE 
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glaze/include"
 )
 
 target_link_libraries(TCodeIME PRIVATE
@@ -107,6 +114,7 @@ target_link_libraries(TCodeIME PRIVATE
     uuid
     advapi32
     imm32
+    asio::asio
 )
 
 target_compile_definitions(TCodeIME PRIVATE UNICODE _UNICODE)

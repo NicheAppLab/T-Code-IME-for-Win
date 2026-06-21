@@ -5,14 +5,13 @@
 #include <cstring>
 #include <cstdint>
 
-// Simple stub response structs to replace protobuf generated types
-struct BufferStatusResponse {
-    bool command_succeed() const { return true; }
-    std::string buffer() const { return ""; }
-    explicit operator bool() const { return command_succeed(); }
+#include "GlazeModels.hpp"
+enum class EngineCommand : uint8_t {
+    Backspace,
+    Left,
+    Right,
+    Convert
 };
-struct CommitResponse {};
-
 class CEngineClient {
 public:
     CEngineClient();
@@ -27,8 +26,21 @@ public:
     BufferStatusResponse Select(int32_t n);
     CommitResponse Commit();
     BufferStatusResponse Backspace();
-    bool SendInput(uint32_t vkCode, std::wstring& outComposition);
-
-private:
+    BufferStatusResponse ExecuteCommand(EngineCommand command);
+    BufferStatusResponse ExecutePut(const std::string& inputChar);
     std::wstring Utf8ToWide(const std::string& str);
+
+    // getters
+    const std::vector<std::string>& GetCandidates() const;
+    bool HasCandidates() const;
+    std::wstring GetBuffer() const;
+    std::wstring GetOutputBuffer() const;
+    std::wstring GetLastKey() const;
+    bool IsLastKeyEmpty() const;
+    bool IsBufferEmpty() const;
+    bool IsOutputBufferEmpty() const;
+    int32_t GetSelectedIndex() const;
+    bool Succeed() const;
+private:
+    BufferStatusResponse m_lastResponse{};
 };
