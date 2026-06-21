@@ -46,7 +46,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#TCodeIMEDllPath}"; DestDir: "{app}"; Flags: ignoreversion regserver
-Source: "{#TCodeProxyBinDir}\*"; DestDir: "{app}\proxy"; Flags: recursesubdirs createallsubdirs
+Source: "{#TCodeProxyBinDir}\{#Config}\TCodeProxy.exe"; DestDir: "{app}\proxy"; Flags: ignoreversion
 Source: "{#TCodeEngineDir}\*"; DestDir: "{app}\engine"; Flags: recursesubdirs createallsubdirs
 #ifdef TCODEBundleJre
 ; Bundle the jlink'd Java runtime

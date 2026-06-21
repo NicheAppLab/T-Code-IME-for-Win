@@ -79,7 +79,6 @@ set(IME_SRC_FILES
     src/CTCodeModeButton.cpp
     src/CTCodeCandidateListUI.cpp
     src/Globals.cpp
-    src/ProcessManager.cpp
     src/Registry.cpp
     src/EngineClient.cpp
     src/TCodeIME.rc
@@ -126,20 +125,17 @@ set_target_properties(TCodeIME PROPERTIES
 )
 
 # -----------------------------------------------------------------------------
-# TCodeProxy (C# Project)
+# TCodeProxy (C++ Native)
 # -----------------------------------------------------------------------------
-find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
+add_executable(TCodeProxy WIN32
+    proxy/TCodeProxy/proxy.cpp
+    proxy/TCodeProxy/resource.rc
+)
 
-add_custom_target(TCodeProxy ALL
-    COMMAND ${DOTNET_EXECUTABLE} publish "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy/TCodeProxy.csproj"
-        --configuration $<CONFIG>
-        --output "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
-        --runtime win-"${TCODE_ARCH}"
-        --self-contained true
-        -p:PublishSingleFile=true
-        -p:PublishReadyToRun=true
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proxy/TCodeProxy"
-    COMMENT "Building C# TCodeProxy with dotnet publish ($<CONFIG>) for ${TCODE_ARCH}"
+set_target_properties(TCodeProxy PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${TCODE_ARCH}/proxy"
+    OUTPUT_NAME "TCodeProxy"
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 
 # -----------------------------------------------------------------------------
