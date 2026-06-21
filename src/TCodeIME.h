@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include "IPCClient.h"
+#include "EngineClient.h"
 #include "helper.h"
 class CTCodeModeButton;
 class CTCodeCandidateListUI;
@@ -68,7 +68,7 @@ public:
     // Candidate list management
     void UpdateCandidateList(const std::vector<std::wstring>& candidates, int selectedIndex);
     void HideCandidateList();
-    void SyncCandidateListFromIPC();
+    void SyncCandidateList();
 
     // Text layout sink
     STDMETHODIMP OnLayoutChange(ITfContext* pContext, TfLayoutCode lcode, ITfContextView* pView) override;
@@ -87,7 +87,7 @@ private:
     LONG _cRef;
     ITfThreadMgr* _pThreadMgr;
     TfClientId _tfClientId;
-    tcode::IPCClient* _pIPCClient;
+    CEngineClient* m_pCEngineClient;
     ITfComposition* _pComposition;
     CComPtr<CTCodeModeButton> _pModeButton;
     CComPtr<CTCodeCandidateListUI> _pCandidateList;
@@ -95,7 +95,9 @@ private:
     DWORD _dwCompartmentEventSinkInputmodeConversionCookie;
     DWORD _dwCandidateListUIElementId;
 
-    void CTCodeIME::MoveCandidateWindowToCaret();
+    int32_t m_selectedIndex{0};
+
+    void MoveCandidateWindowToCaret();
 
     friend class CManageCompositionEditSession;
     friend class CTCodeCandidateListUI;
@@ -103,8 +105,8 @@ private:
 
     DWORD _dwTextLayoutSinkCookie = 0;
     DWORD _dwThreadFocusSinkCookie = 0;
-    void CTCodeIME::UninitContextSink(ITfContext* pContext);
-    void CTCodeIME::InitContextSink(ITfContext* pContext);
+    void UninitContextSink(ITfContext* pContext);
+    void InitContextSink(ITfContext* pContext);
     void TriggerPositionUpdate();
 };
 

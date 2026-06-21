@@ -1,3 +1,6 @@
 [submodule "vcpkg"]
 	path = vcpkg
 	url = https://github.com/microsoft/vcpkg.git
+[submodule "third_party/glaze"]
+	path = third_party/glaze
+	url = https://github.com/stephenberry/glaze.git
